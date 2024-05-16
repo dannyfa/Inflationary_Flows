@@ -23,7 +23,7 @@ import click
 import torch
 import dnnlib
 from torch_utils import distributed as dist
-from training import training_loop_toy
+from training import toy_training_loop
 
 import warnings
 warnings.filterwarnings('ignore', 'Grad strides do not match bucket view strides') # False warning printed by PyTorch 1.12.
@@ -231,7 +231,7 @@ def main(**kwargs):
             c.network_kwargs.update(data_eigs=data_eigs)
 
     # Train.
-    training_loop_toy.training_loop(**c)
+    toy_training_loop.training_loop(**c)
 
 #----------------------------------------------------------------------------
 
