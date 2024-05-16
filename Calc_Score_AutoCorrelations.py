@@ -19,7 +19,7 @@ from tqdm import tqdm
 import dnnlib
 from torch_utils import misc
 from torch_utils import distributed as dist 
-from ifs_ode_sim.hd_ODE import get_disc_times
+
 
 #--------------------------------------------------------------------#
 
@@ -144,7 +144,7 @@ def extract(save_dir, data_root, network_pkl, **kwargs):
                                                     batch_size=opts.bs, **data_loader_kwargs))
         
     #get time pts of interest 
-    time_pts = get_disc_times(opts.disc, end_time=opts.end_time, n_iters=opts.n_time_pts, int_mode='melt', eps=opts.vpode_disc_eps)
+    time_pts = dnnlib.util.get_disc_times(opts.disc, end_time=opts.end_time, n_iters=opts.n_time_pts, int_mode='melt', eps=opts.vpode_disc_eps)
     
     
     #-----------------------------------------------#
@@ -207,9 +207,124 @@ def extract(save_dir, data_root, network_pkl, **kwargs):
         fname = '{}_{}_net_outputs_residuals_time{}.npz'.format(opts.data_name, schedule, t)
         np.savez(os.path.join(save_dir, fname), net_outputs = curr_t_all_netoutputs, \
              net_residuals = curr_t_all_netresiduals)
+            
+    return 
 
 
 #-------------------------------------------------------------------------#
+
+#-------------------------------------------------------------------------#
+
+
+@main.command()
+@click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                            type=str, required=True)
+@click.option('--data_name',               help='Name of toy dataset to use', metavar='STR',                                                                  type=str, default='circles', show_default=True)
+@click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                                                                type=str, required=True)
+
+@click.option('--n_time_pts',              help='N for time linearly spaced discretization schedule', metavar='INT',                                          type=click.IntRange(min=1), default=701, show_default=True)
+@click.option('--h',                       help='Step size to use when constructing disc. schedule', metavar='FLOAT',                                         type=float, default=1e-2, show_default=True)
+
+@click.option('--n_samples',               help='Total number of samples to compute AC over', metavar='INT',                                                  type=int, default=10000, show_default=True)
+
+@click.option('--device_name',             help='Name of device we wish to run simulation on.', metavar='STR',                                                type=str, default='cuda', show_default=True)
+@click.option('--data_dim',                help='Dimensionality of toy data.', metavar='INT',                                                                 type=int, default=2, show_default=True)
+@click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                       type=click.IntRange(min=1), default=2, show_default=True)
+
+def extracttoys(save_dir, data_name, network_pkl, **kwargs):
+    """
+    Similar to extract, but adapted to toy datasets/networks.
+    
+    Runs network output and residual extraction for all "N" total 
+    samples at once (i.e., no batch computation)
+    
+    Only uses linearly spaced discretization schedule. 
+    """
+    
+    #get all other args and pass it to general opts dict
+    opts = dnnlib.util.EasyDict(kwargs)
+    
+    #init dist mode
+    dist.init()    
+    
+    #set up device
+    device = torch.device(opts.device_name)   
+
+
+    #set up saving dir
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)       
+        
+    
+    #set up schedule
+    schedule = 'PRP' if opts.data_dim==opts.dims_to_keep else 'PRRto{}'.format(opts.dims_to_keep)
+
+    #load network
+    if dist.get_rank() != 0:
+        torch.distributed.barrier()    
+
+    dist.print0(f'Loading network from "{network_pkl}"...')
+    with dnnlib.util.open_url(network_pkl, verbose=(dist.get_rank() == 0)) as f:
+        net = pickle.load(f)['ema'].to(device)
+    
+    if dist.get_rank() == 0:
+        torch.distributed.barrier()     
+    
+    #make sure net g, W are on proper device
+    #and update net device attribute 
+    g = torch.from_numpy(net.g.cpu().numpy()).type(torch.float32).to(device)
+    W = torch.from_numpy(net.W.cpu().numpy()).type(torch.float32).to(device)
+    net.g = g
+    net.W = W
+    net.device = device 
+        
+    
+    #get disc times 
+    time_pts = dnnlib.util.get_disc_times('ifs', end_time=(opts.h*opts.n_time_pts), n_iters=opts.n_time_pts, int_mode='melt')
+    
+    #get data samples 
+    toy_data = dnnlib.util.get_toy_dset(data_name, opts.n_samples)[0]
+    toy_data = torch.from_numpy(toy_data).type(torch.float32).to(device)
+    
+    #init variables to hold net outputs, output residuals 
+    all_netouts = []
+    all_net_residuals = []
+
+    for itr in tqdm(range(0, time_pts.shape[0]), total=time_pts.shape[0], desc='Net Residuals Extraction Progression'):
+        #get gamma(t)
+        curr_gammat = dnnlib.util.get_gamma(net.g, time_pts[itr], gamma0=net.gamma0, rho=net.rho)
+        #sample noise for this t 
+        curr_noise = torch.randn(toy_data.shape[0], toy_data.shape[1]).to(device) * torch.sqrt(curr_gammat)[None, :] 
+        
+        #add noise to samples in ES 
+        samples_es = torch.einsum('ij, bjk -> bik', net.W.T, toy_data.unsqueeze(-1)).squeeze(-1)
+        samples_n_es = samples_es + curr_noise
+        
+        #now feed these to net to get an output 
+        ts = torch.ones(toy_data.shape[0]).to(device) * time_pts[itr]
+        with torch.no_grad(): 
+            D_x, _ = net(samples_n_es, ts) #output in net.space 
+            all_netouts.append(D_x.cpu().numpy()) 
+        
+        #get net output residuals 
+        #account for toy nets trained in different bases 
+        if net.space == 'IS': 
+            net_residuals = D_x - toy_data
+        else: 
+            net_residuals = D_x - samples_es
+        
+        all_net_residuals.append(net_residuals.cpu().numpy())
+        
+    
+    
+    #save these 
+    fname = '{}_{}_toy_net_outputs_residuals.npz'.format(data_name, schedule)
+    np.savez(os.path.join(save_dir, fname), net_outputs = np.array(all_netouts), \
+             net_residuals = np.array(all_net_residuals))    
+    
+    return 
+
+#-------------------------------------------------------------------------#
+
 
 
 @main.command()
@@ -323,8 +438,98 @@ def calc(save_dir, res_root, **kwargs):
         
         np.savez(os.path.join(save_dir, curr_fname), net_output_acs = all_acs_netouts, \
                  net_residual_acs = all_acs_netres) 
-
     
+    return
+
+#---------------------------------------------------------------------#
+@main.command()
+@click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                            type=str, required=True)
+@click.option('--res_root',                help='(Full) Path to residuals extracted', metavar='DIR',                                                          type=str, required=True)
+@click.option('--data_name',               help='Name of toy dataset we wish to use', metavar='STR',                                                          type=str, default='CIFAR10', show_default=True)
+
+@click.option('--n_time_pts',              help='N for time discretization schedule', metavar='INT',                                                          type=click.IntRange(min=1), default=256, show_default=True)
+
+@click.option('--data_dim',                help='Dimensionality of toy dataset.', metavar='INT',                                                              type=int, default=2, show_default=True)
+@click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                       type=click.IntRange(min=1), default=2, show_default=True)
+@click.option('--n_samples',               help='Total number of samples to compute AC over', metavar='INT',                                                  type=int, default=10000, show_default=True)
+
+@click.option('--device_name',             help='Name of device we wish to run simulation on.', metavar='STR',                                                type=str, default='cuda', show_default=True)
+
+
+def calctoys(save_dir, res_root, **kwargs):
+    """
+    Similar to calc method, only for toy data.
+    """
+    
+    #get all other args and pass it to general opts dict
+    opts = dnnlib.util.EasyDict(kwargs)
+    
+    #set up device
+    device = torch.device(opts.device_name)   
+
+
+    #set up saving dir
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)        
+    
+    #set up schedule name 
+    schedule = 'PRP' if opts.data_dim==opts.dims_to_keep else 'PRRto{}'.format(opts.dims_to_keep)    
+    
+    #load .npz file with extracted results
+    net_res_vals = np.load(res_root)
+    
+    #get mean, std for ref time pt 
+    
+    mu_ref_netouts = np.mean(net_res_vals['net_outputs'][0, :, :], axis=0)
+    std_ref_netouts = np.std(net_res_vals['net_outputs'][0, :, :], axis=0)
+    
+    mu_ref_netres = np.mean(net_res_vals['net_residuals'][0, :, :], axis=0)
+    std_ref_netres = np.std(net_res_vals['net_residuals'][0, :, :], axis=0)  
+    
+    
+    all_netout_acs = []
+    all_netres_acs = []
+    
+    #loop through time_pts collected and calc ACs
+    for t in range(opts.n_time_pts):
+        
+        print('*'*40)
+        print('Computing Correlations for times 0 and {}'.format(t))
+        print('*'*40)
+        
+        
+        #get x2 mean, std
+        mu2_netouts = np.mean(net_res_vals['net_outputs'][t, :, :], axis=0)
+        sigma2_netouts = np.std(net_res_vals['net_outputs'][t, :, :], axis=0)
+        
+        mu2_netres = np.mean(net_res_vals['net_residuals'][t, :, :], axis=0)
+        sigma2_netres = np.std(net_res_vals['net_residuals'][t, :, :], axis=0)
+        
+        #now compute acs for this time lag
+        curr_t_acs_netout = calc_autocorr(net_res_vals['net_outputs'][0, :, :], mu_ref_netouts, \
+                                          net_res_vals['net_outputs'][t, :, :], mu2_netouts, device)
+        curr_t_acs_netres = calc_autocorr(net_res_vals['net_residuals'][0, :, :], mu_ref_netres, \
+                                          net_res_vals['net_residuals'][t, :, :], mu2_netres, device)
+        
+        #take avg over all samples to get E[(X1- mu1)(X2-mu2)^\top]
+        #and scale by corresponding stds (\sigma_1, \sigma_2)
+        curr_t_acs_netout /= opts.n_samples
+        curr_t_acs_netout /= (std_ref_netouts * sigma2_netouts)
+        all_netout_acs.append(curr_t_acs_netout)
+        
+        curr_t_acs_netres /= opts.n_samples
+        curr_t_acs_netres /= (std_ref_netres * sigma2_netres)
+        all_netres_acs.append(curr_t_acs_netres)
+    
+    #save these results 
+    out_fname = '{}_{}_toy_autocorrelations.npz'.format(opts.data_name, schedule)
+        
+    np.savez(os.path.join(save_dir, out_fname), net_output_acs = np.array(all_netout_acs), \
+                 net_residual_acs = np.array(all_netres_acs))        
+    
+    return 
+    
+
 
 #---------------------------------------------------------------------#
 
