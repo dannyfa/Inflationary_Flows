@@ -12,6 +12,7 @@ modules to run melt and generation
 import torch
 import numpy as np
 import os
+import json
 import pickle
 from sklearn.covariance import EmpiricalCovariance
 import click 
@@ -86,9 +87,6 @@ def main(save_dir, data_root, network_pkl, **kwargs):
         torch.distributed.barrier()     
         
     
-    #set up space to run ODE sim on 
-    space = net.space 
-    
     #get Kimgs (for output fname) 
     pkl_base_fname = os.path.basename(network_pkl) 
     kimgs = pkl_base_fname.split('-')[-1][:-4] 
@@ -124,7 +122,7 @@ def main(save_dir, data_root, network_pkl, **kwargs):
         
         #run actual melt 
         melt_res = sim_batch_net_ODE(melt_samples.to(device), net, device, shape=[opts.bs, opts.img_ch, opts.img_size, opts.img_size], \
-                                     space=space, int_mode='melt', n_iters=opts.n_iters, end_time=opts.end_time, \
+                                     int_mode='melt', n_iters=opts.n_iters, end_time=opts.end_time, \
                                          A0=opts.end_vars, save_freq=opts.save_freq, disc=opts.disc, solver=opts.solver, \
                                              eps=opts.vpode_disc_eps)
         
@@ -136,8 +134,7 @@ def main(save_dir, data_root, network_pkl, **kwargs):
                                                                                                                opts.save_freq, kimgs, opts.bs)
         np.savez(os.path.join(save_dir, melt_fname), tilde_xs=melt_res['tilde_xs'], xs=melt_res['xs'], \
                  tilde_xs_es=melt_res['tilde_xs_es'], xs_es=melt_res['xs_es'], dxs=melt_res['dxs'], \
-                     dxs_es=melt_res['dxs_es'], net_outs=melt_res['net_outs'], unscaled_scores=melt_res['unscaled_scores'], \
-                         ts=melt_res['ts'])
+                     dxs_es=melt_res['dxs_es'], net_outs=melt_res['net_outs'], unscaled_scores=melt_res['unscaled_scores'])
             
     if opts.sim_type=='all' or opts.sim_type=='roundtrip':
         #run roundtrip
@@ -156,7 +153,7 @@ def main(save_dir, data_root, network_pkl, **kwargs):
         gc.collect()
         
         rdtrp_res = sim_batch_net_ODE(batch, net, device, shape=[opts.bs, opts.img_ch, opts.img_size, opts.img_size], \
-                                     space=space, int_mode='gen', n_iters=opts.n_iters, end_time=opts.end_time, \
+                                     int_mode='gen', n_iters=opts.n_iters, end_time=opts.end_time, \
                                          A0=opts.end_vars, save_freq=opts.save_freq, disc=opts.disc, solver=opts.solver, \
                                              eps=opts.vpode_disc_eps)
         
@@ -170,8 +167,7 @@ def main(save_dir, data_root, network_pkl, **kwargs):
                 
         np.savez(os.path.join(save_dir, rdtrp_fname), tilde_xs=rdtrp_res['tilde_xs'], xs=rdtrp_res['xs'], \
                  tilde_xs_es=rdtrp_res['tilde_xs_es'], xs_es=rdtrp_res['xs_es'], dxs=rdtrp_res['dxs'], \
-                     dxs_es=rdtrp_res['dxs_es'], net_outs=rdtrp_res['net_outs'], unscaled_scores=rdtrp_res['unscaled_scores'], \
-                         ts=rdtrp_res['ts'])
+                     dxs_es=rdtrp_res['dxs_es'], net_outs=rdtrp_res['net_outs'], unscaled_scores=rdtrp_res['unscaled_scores'])
         
         del rdtrp_res
         gc.collect()
@@ -202,7 +198,7 @@ def main(save_dir, data_root, network_pkl, **kwargs):
             
         batch = torch.from_numpy(batch).type(torch.float32).to(device)            
         gen_res = sim_batch_net_ODE(batch, net, device, shape=[opts.bs, opts.img_ch, opts.img_size, opts.img_size], \
-                                     space=space, int_mode='gen', n_iters=opts.n_iters, end_time=opts.end_time, \
+                                     int_mode='gen', n_iters=opts.n_iters, end_time=opts.end_time, \
                                          A0=opts.end_vars, save_freq=opts.save_freq, disc=opts.disc, solver=opts.solver, \
                                              eps=opts.vpode_disc_eps) 
 
@@ -219,8 +215,21 @@ def main(save_dir, data_root, network_pkl, **kwargs):
         
         np.savez(os.path.join(save_dir, gen_fname), tilde_xs=gen_res['tilde_xs'], xs=gen_res['xs'], \
                  tilde_xs_es=gen_res['tilde_xs_es'], xs_es=gen_res['xs_es'], dxs=gen_res['dxs'], \
-                     dxs_es=gen_res['dxs_es'], net_outs=gen_res['net_outs'], unscaled_scores=gen_res['unscaled_scores'], \
-                         ts=gen_res['ts'])
+                     dxs_es=gen_res['dxs_es'], net_outs=gen_res['net_outs'], unscaled_scores=gen_res['unscaled_scores'])
+            
+
+    #log params to json file 
+    opts.update(save_dir=save_dir)
+    opts.update(network=network_pkl)
+    opts.update(data_root=data_root)
+    
+    #set up fname for output 
+    fname = '{}_{}_HD_pfODE_int_sim_params.json'.format(opts.data_name, schedule)
+
+    if dist.get_rank() == 0:
+        os.makedirs(save_dir, exist_ok=True)
+        with open(os.path.join(save_dir, fname), 'wt') as f:
+            json.dump(opts, f, indent=2)
                     
     return 
 

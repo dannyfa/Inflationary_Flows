@@ -73,10 +73,7 @@ def main(save_dir, data_root, network_pkl, **kwargs):
     if dist.get_rank() == 0:
         torch.distributed.barrier()     
         
-    
-    #set up space to run ODE sim on 
-    space = net.space 
-    
+        
     #get Kimgs (for output fname) 
     pkl_base_fname = os.path.basename(network_pkl) 
     kimgs = pkl_base_fname.split('-')[-1][:-4] 
@@ -108,7 +105,7 @@ def main(save_dir, data_root, network_pkl, **kwargs):
         dist.print0('*'*40)
         #run melt 
         melt_res = sim_batch_net_ODE(melt_samples.to(device), net, device, shape=[opts.bs, opts.img_ch, opts.img_size, opts.img_size], \
-                                     space=space, int_mode='melt', n_iters=opts.n_iters, end_time=opts.end_time, \
+                                     int_mode='melt', n_iters=opts.n_iters, end_time=opts.end_time, \
                                          A0=opts.end_vars, save_freq=10, disc=opts.disc, solver=opts.solver, \
                                              eps=opts.vpode_disc_eps, endsim_imgs_only=False)
         #run gen from the above 
@@ -117,7 +114,7 @@ def main(save_dir, data_root, network_pkl, **kwargs):
         gc.collect()
         
         rdtrp_imgs = sim_batch_net_ODE(melted_imgs, net, device, shape=[opts.bs, opts.img_ch, opts.img_size, opts.img_size], \
-                                     space=space, int_mode='gen', n_iters=opts.n_iters, end_time=opts.end_time, \
+                                     int_mode='gen', n_iters=opts.n_iters, end_time=opts.end_time, \
                                          A0=opts.end_vars, save_freq=10, disc=opts.disc, solver=opts.solver, \
                                              eps=opts.vpode_disc_eps, endsim_imgs_only=True)
         

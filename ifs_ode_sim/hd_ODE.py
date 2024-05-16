@@ -85,11 +85,175 @@ def compute_net_flow(D_tilde_xs, space, W, xs, s, s_dot, gamma_inv, gamma_dot):
         
     return dx_dt 
 
+#method to run Euler step update
+def do_Euler_update(get_netout, net, xs_vars_dict, t, t_plus_one, shape, net_kwargs):
+    """
+    
+    Does an Euler update/step. 
+    
+    Args
+    ----
+    get_netout: method to calc network denoised output. Takes network and its xs, and t
+    inputs as arguments. Xs inputs should be in images space, regardless of net.space. 
+    t is jsut a float. 
+    net: trained instance of IFsPreCond. 
+    xs_vars_dict: dictionary containing our cureent 'xs' variables, namely: 
+        1) 'xs' : scaled, in IS
+        2) 'xs_es': scaled, in ES
+        3) 'tilde_xs':unscaled, in IS
+        4) 'tilde_xs_es':unscaled, in ES 
+    t: float. Current time pt.
+    t_plus_one: float. Next time pt.
+    shape: list (B, C, H, W). List with original image shapes.
+    net_kwargs: dictionary with additional arguments used to construct s, s_dot,
+    gamma_inv, and gamma_dot needed for flow calculation.
+    
+    Returns
+    --------
+    Dictionary containing Euler updated/next 'xs' variables (see above) along with:
+        1) 'net_outputs': D(x, t) network outputs for current time pt.
+        2) 'unscaled scores': C^{-1}(t) (D(x, t) - x), for current time pt.
+        3) 'dxs': flow updates for current time pt (in IS)
+        4) 'dxs_es': flow updates for current time (in ES).
+        5) 'dx_dt': flow update without time step applied (in IS).
+        6) 'dx_dt_es': flow update without time step applied (in ES).
+    
+    """
+    #get net output 
+    D_tilde_xs = get_netout(net, xs_vars_dict['curr_tilde_xs'], shape, t)
+    #get orther args for flow calc
+    s, s_dot, gamma_inv, gamma_dot = dnnlib.util.get_dx_dt_params(t, **net_kwargs)
+    if net.space == 'ES':
+        #get unscaled scores 
+        unscaled_score = gamma_inv[None, :]*(D_tilde_xs - xs_vars_dict['curr_tilde_xs_es']) 
+        
+        curr_dxs_dt_es = compute_net_flow(D_tilde_xs, net.space, net_kwargs['W'], xs_vars_dict['curr_xs_es'], \
+                                          s, s_dot, gamma_inv, gamma_dot)
+            
+        curr_dxs_dt = torch.einsum('ij, bjk -> bik', net_kwargs['W'], curr_dxs_dt_es.unsqueeze(-1)).squeeze(-1)   
+        
+        dxs_es = curr_dxs_dt_es * (t_plus_one-t)
+        dxs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], dxs_es.unsqueeze(-1)).squeeze(-1)   
+        
+        #get curr_xs_es, curr_xs
+        next_xs_es = xs_vars_dict['curr_xs_es'] + dxs_es
+        next_xs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], next_xs_es.unsqueeze(-1)).squeeze(-1)
+
+    else: 
+        unscaled_score = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, \
+                                      (D_tilde_xs - xs_vars_dict['curr_tilde_xs']).unsqueeze(-1)).squeeze(-1)
+        unscaled_score *= gamma_inv[None, :]
+        unscaled_score = torch.einsum('ij, bjk -> bik', net_kwargs['W'], unscaled_score.unsqueeze(-1)).squeeze(-1)
+            
+        #get dx, dx_es
+        curr_dxs_dt = compute_net_flow(D_tilde_xs, net.space, net_kwargs['W'], xs_vars_dict['curr_xs'], \
+                                       s, s_dot, gamma_inv, gamma_dot)
+        curr_dxs_dt_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, curr_dxs_dt.unsqueeze(-1)).squeeze(-1) 
+            
+        dxs = curr_dxs_dt * (t_plus_one-t) 
+        dxs_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, dxs.unsqueeze(-1)).squeeze(-1)     
+            
+        #get curr_xs_es, curr_xs
+        next_xs = xs_vars_dict['curr_xs'] + dxs
+        next_xs_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, next_xs.unsqueeze(-1)).squeeze(-1) 
+    
+    #now get updates unscaled xs variables
+    next_s = dnnlib.util.get_s(net_kwargs['xi_star'], net_kwargs['g'], t_plus_one, \
+                               A0=net_kwargs['A0'], gamma0=net_kwargs['gamma0'], rho=net_kwargs['rho'])
+    #get euler update versions of tilde_xs_es, tilde_xs 
+    next_tilde_xs_es = (1/next_s)*next_xs_es
+    next_tilde_xs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], next_tilde_xs_es.unsqueeze(-1)).squeeze(-1)
+    
+    return {'next_xs':next_xs, 'next_xs_es':next_xs_es, 'next_tilde_xs':next_tilde_xs, 
+            'next_tilde_xs_es':next_tilde_xs_es, 'unscaled_scores':unscaled_score, 
+            'net_outs':D_tilde_xs, 'dxs':dxs, 'dxs_es':dxs_es, 
+            'dx_dt':curr_dxs_dt, 'dx_dt_es':curr_dxs_dt_es}
+
+#method to run Heun update/step
+def do_Heun_update(get_netout, net, euler_results_dict, xs_vars_dict, t, t_plus_one, shape, net_kwargs):
+    """
+   
+    Does a Heun udpate/step 
+    
+    Args
+    -------
+    get_netout: method to calc network denoised output. Takes network and its xs, and t
+    inputs as arguments. Xs inputs should be in images space, regardless of net.space. 
+    t is jsut a float. 
+    net: trained instance of IFsPreCond. 
+    euler_results_dict: dictionary containing outputs of Euler step for time "t".
+    xs_vars_dict: dictionary containing our cureent 'xs' variables, at time "t" (Same as for Euler's input')
+    t: float. Current time pt.
+    t_plus_one: float. Next time pt.
+    shape: list (B, C, H, W). List with original image shapes.
+    net_kwargs: dictionary with additional arguments used to construct s, s_dot,
+    gamma_inv, and gamma_dot needed for flow calculation.    
+    
+    Returns
+    --------
+    Dictionary containing Euler updated 'xs' variables (see above) along with:
+        1) 'net_outputs': D(x, t) network outputs for current time pt.
+        2) 'unscaled scores': C^{-1}(t) (D(x, t) - x), for current time pt.
+        3) 'dxs': flow updates for current time pt (in IS)
+        4) 'dxs_es': flow updates for current time (in ES).    
+    
+    """
+    #get net output 
+    D_tilde_xs = get_netout(net, euler_results_dict['next_tilde_xs'], shape, t_plus_one)
+        
+    #get ODE params for next_t 
+    s, s_dot, gamma_inv, gamma_dot = dnnlib.util.get_dx_dt_params(t_plus_one, **net_kwargs)    
+    
+    if net.space=='ES':
+        #get unscaled score 
+        unscaled_score = gamma_inv[None, :]*(D_tilde_xs - euler_results_dict['next_tilde_xs_es'])
+            
+        #get dx, dx_es
+        next_dxs_dt_es = compute_net_flow(D_tilde_xs, net.space, net_kwargs['W'], \
+                                          euler_results_dict['next_xs_es'], \
+                                              s, s_dot, gamma_inv, gamma_dot)
+        dxs_es = (0.5*next_dxs_dt_es + 0.5*euler_results_dict['dx_dt_es']) * (t_plus_one-t)
+        dxs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], dxs_es.unsqueeze(-1)).squeeze(-1)
+            
+        #get curr_xs_es, curr_xs
+        next_xs_es = xs_vars_dict['curr_xs_es'] + dxs_es
+        next_xs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], next_xs_es.unsqueeze(-1)).squeeze(-1)
+            
+        
+    else: 
+        #get unscaled score 
+        unscaled_score = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, \
+                                      (D_tilde_xs - euler_results_dict['next_tilde_xs']).unsqueeze(-1)).squeeze(-1)
+        unscaled_score *= gamma_inv[None, :]
+        unscaled_score = torch.einsum('ij, bjk -> bik', net_kwargs['W'], unscaled_score.unsqueeze(-1)).squeeze(-1)
+            
+        #get dx, dx_es
+        next_dxs_dt = compute_net_flow(D_tilde_xs, net.space, net_kwargs['W'], euler_results_dict['next_xs'], \
+                                       s, s_dot, gamma_inv, gamma_dot)
+        dxs =(0.5*euler_results_dict['dx_dt'] + 0.5*next_dxs_dt) * (t_plus_one-t) 
+        dxs_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, dxs.unsqueeze(-1)).squeeze(-1)     
+            
+        #get curr_xs_es, curr_xs
+        next_xs = xs_vars_dict['curr_xs'] + dxs
+        next_xs_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, next_xs.unsqueeze(-1)).squeeze(-1)  
+    
+    #now get tilde_xs_es, tilde_xs corresponding to this heun update
+    #note that scale here is STILL for t_plus_one time pt! We just computed update to t_plus_one differently
+    next_tilde_xs_es = (1/s)*next_xs_es
+    next_tilde_xs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], next_tilde_xs_es.unsqueeze(-1)).squeeze(-1)  
+    
+    return {'next_xs':next_xs, 'next_xs_es':next_xs_es, 'next_tilde_xs':next_tilde_xs, 
+            'next_tilde_xs_es':next_tilde_xs_es, 'unscaled_scores':unscaled_score, 
+            'net_outs':D_tilde_xs, 'dxs':dxs, 'dxs_es':dxs_es}
+
 
 #method to run through one single ODE integration step 
 
 def do_ODE_step(get_netout, net, curr_tilde_xs, curr_tilde_xs_es, curr_xs, curr_xs_es, t, t_plus_one, \
-                space, shape, net_kwargs, solver='heun'):
+                shape, net_kwargs, solver='heun'):
+    
+    
+    
     """
     
     Runs ODE update using either Euler or Heun solver choices. 
@@ -101,111 +265,30 @@ def do_ODE_step(get_netout, net, curr_tilde_xs, curr_tilde_xs_es, curr_xs, curr_
     unscaled_scores, dxs, and dxs_es .
     
     """
-    #get curr ODE variables we need 
-    curr_s, curr_s_dot, curr_gamma_inv, curr_gamma_dot = dnnlib.util.get_dx_dt_params(t, **net_kwargs)
+    #construct xs variables dict 
+    #this has our current xs variables state 
+    curr_xs_vars_dict = {'curr_tilde_xs':curr_tilde_xs, 'curr_tilde_xs_es':curr_tilde_xs_es, 
+                    'curr_xs':curr_xs, 'curr_xs_es':curr_xs_es}
     
-    ######### run Euler step ################
-    D_tilde_xs = get_netout(net, curr_tilde_xs, shape, t) 
-                
-    if space=='ES':
-        #get unscaled score 
-        unscaled_score = curr_gamma_inv[None, :]*(D_tilde_xs - curr_tilde_xs_es)
-            
-        #get dx, dx_es
-        curr_dxs_dt_es = compute_net_flow(D_tilde_xs, space, net_kwargs['W'], curr_xs_es, curr_s, curr_s_dot, curr_gamma_inv, \
-                                   curr_gamma_dot)
-        dxs_es = curr_dxs_dt_es * (t_plus_one-t)
-        dxs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], dxs_es.unsqueeze(-1)).squeeze(-1)
-            
-        #get curr_xs_es, curr_xs
-        next_xs_es = curr_xs_es + dxs_es
-        next_xs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], next_xs_es.unsqueeze(-1)).squeeze(-1)
-            
-        
-    else: 
-        #if simulating with D_x in image space... 
-        #get unscaled score
-        unscaled_score = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, (D_tilde_xs - curr_tilde_xs).unsqueeze(-1)).squeeze(-1)
-        unscaled_score *= curr_gamma_inv[None, :]
-        unscaled_score = torch.einsum('ij, bjk -> bik', net_kwargs['W'], unscaled_score.unsqueeze(-1)).squeeze(-1)
-            
-        #get dx, dx_es
-        curr_dxs_dt = compute_net_flow(D_tilde_xs, space, net_kwargs['W'], curr_xs, curr_s, curr_s_dot, curr_gamma_inv, \
-                                   curr_gamma_dot)
-        dxs = curr_dxs_dt * (t_plus_one-t) 
-        dxs_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, dxs.unsqueeze(-1)).squeeze(-1)     
-            
-        #get curr_xs_es, curr_xs
-        next_xs = curr_xs + dxs
-        next_xs_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, next_xs.unsqueeze(-1)).squeeze(-1)
     
-    #get ODE scaling for next_t ==> this is used to get updated tilde_xs_es, tilde_xs 
-    next_s = dnnlib.util.get_s(net_kwargs['xi_star'], net_kwargs['g'], t_plus_one, \
-                               A0=net_kwargs['A0'], gamma0=net_kwargs['gamma0'], rho=net_kwargs['rho'])
-            
-
-    #get euler update versions of tilde_xs_es, tilde_xs 
-    next_tilde_xs_es = (1/next_s)*next_xs_es
-    next_tilde_xs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], next_tilde_xs_es.unsqueeze(-1)).squeeze(-1)      
+    #take euler step 
+    curr_results_dict = do_Euler_update(get_netout, net, curr_xs_vars_dict, t, t_plus_one, shape, net_kwargs)
     
-    ##### run Heun step (if desired) ###########
-    
+    #if using heuns method, calc heun update
     if solver == 'heun':
-        #we are using trap. rule (Heun solver), and need to do an additional step before computing update
-        #note that \sigma(t) is NEVER exactly zero for our IFs schedule... 
-        
-        #get net output 
-        D_tilde_xs = get_netout(net, next_tilde_xs, shape, t_plus_one)
-        
-        #get ODE params for next_t 
-        next_s, next_s_dot, next_gamma_inv, next_gamma_dot = dnnlib.util.get_dx_dt_params(t_plus_one, **net_kwargs)
-        
-        if space=='ES':
-            #get unscaled score 
-            unscaled_score = next_gamma_inv[None, :]*(D_tilde_xs - next_tilde_xs_es)
-            
-            #get dx, dx_es
-            next_dxs_dt_es = compute_net_flow(D_tilde_xs, space, net_kwargs['W'], next_xs_es, next_s, next_s_dot, next_gamma_inv, \
-                                   next_gamma_dot)
-            dxs_es = (0.5*next_dxs_dt_es + 0.5*curr_dxs_dt_es) * (t_plus_one-t)
-            dxs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], dxs_es.unsqueeze(-1)).squeeze(-1)
-            
-            #get curr_xs_es, curr_xs
-            next_xs_es = curr_xs_es + dxs_es
-            next_xs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], next_xs_es.unsqueeze(-1)).squeeze(-1)
-            
-        
-        else: 
-            #get unscaled score
-            unscaled_score = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, (D_tilde_xs - next_tilde_xs).unsqueeze(-1)).squeeze(-1)
-            unscaled_score *= next_gamma_inv[None, :]
-            unscaled_score = torch.einsum('ij, bjk -> bik', net_kwargs['W'], unscaled_score.unsqueeze(-1)).squeeze(-1)
-            
-            #get dx, dx_es
-            next_dxs_dt = compute_net_flow(D_tilde_xs, space, net_kwargs['W'], next_xs, next_s, next_s_dot, next_gamma_inv, \
-                                   next_gamma_dot)
-            dxs =(0.5*curr_dxs_dt + 0.5*next_dxs_dt) * (t_plus_one-t) 
-            dxs_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, dxs.unsqueeze(-1)).squeeze(-1)     
-            
-            #get curr_xs_es, curr_xs
-            next_xs = curr_xs + dxs
-            next_xs_es = torch.einsum('ij, bjk -> bik', net_kwargs['W'].T, next_xs.unsqueeze(-1)).squeeze(-1)  
-        
-        #now get tilde_xs_es, tilde_xs corresponding to this heun update
-        #note that scale here is STILL for t_plus_one time pt! We just computed update to t_plus_one differently
-        next_tilde_xs_es = (1/next_s)*next_xs_es
-        next_tilde_xs = torch.einsum('ij, bjk -> bik', net_kwargs['W'], next_tilde_xs_es.unsqueeze(-1)).squeeze(-1)  
-        
-    #################################################
+        curr_results_dict = do_Heun_update(get_netout, net, curr_results_dict, \
+                                           curr_xs_vars_dict, t, t_plus_one, shape, net_kwargs)
     
-    #return desired vals 
-    return {'xs_es':next_xs_es, 'xs':next_xs, 'tilde_xs_es':next_tilde_xs_es, 
-            'tilde_xs':next_tilde_xs, 'dxs':dxs, 'dxs_es':dxs_es, 
-            'net_outputs':D_tilde_xs, 'unscaled_scores':unscaled_score}
+    #return desired vals
+    return {'xs_es':curr_results_dict['next_xs_es'], 'xs':curr_results_dict['next_xs'], 
+            'tilde_xs_es':curr_results_dict['next_tilde_xs_es'], 'tilde_xs':curr_results_dict['next_tilde_xs'], 
+            'dxs':curr_results_dict['dxs'], 'dxs_es':curr_results_dict['dxs_es'], 
+            'net_outputs':curr_results_dict['net_outs'], 'unscaled_scores':curr_results_dict['unscaled_scores']}
+
         
     
 #does ODE simulation using above helpers 
-def do_ODE_sim(batch, net, shape, space, g, W, xi_star, get_netout, int_mode, n_iters, end_time, A0, gamma0, rho, \
+def do_ODE_sim(batch, net, shape, g, W, xi_star, get_netout, int_mode, n_iters, end_time, A0, gamma0, rho, \
                save_freq, disc='vp_ode', solver='heun', eps=1e-2):
     
     """
@@ -278,7 +361,7 @@ def do_ODE_sim(batch, net, shape, space, g, W, xi_star, get_netout, int_mode, n_
     for itr in tqdm(range(0, n_iters-1), total=n_iters-1, desc='Batch ODE Sim Progression'):
         #get updates using chosen solver
         updates = do_ODE_step(get_netout, net, curr_tilde_xs, curr_tilde_xs_es, curr_xs, \
-                              curr_xs_es, taus[itr], taus[itr+1], space, shape, net_kwargs, solver=solver)
+                              curr_xs_es, taus[itr], taus[itr+1], shape, net_kwargs, solver=solver)
         
         #carry out changes to variables we need to keep track of 
         curr_xs_es, curr_xs = updates['xs_es'], updates['xs']
@@ -299,15 +382,12 @@ def do_ODE_sim(batch, net, shape, space, g, W, xi_star, get_netout, int_mode, n_
             res_dict['dxs'].append(updates['dxs'].cpu().numpy())
             res_dict['dxs_es'].append(updates['dxs_es'].cpu().numpy())
             
-            res_dict['ts'].append(taus[itr+1])
-            
-
     return res_dict
 
 
 #Wrapper method to simulate ODE for a batch of data
 
-def sim_batch_net_ODE(batch, net, device, shape=None, space='ES', int_mode='melt', n_iters=1501, end_time=15.01, \
+def sim_batch_net_ODE(batch, net, device, shape=None, int_mode='melt', n_iters=1501, end_time=15.01, \
                                           A0=1., save_freq=10, disc='vp_ode', solver='heun', eps=1e-2, endsim_imgs_only=False, **kwargs):
     """
     General wrapper to run melt/gen from trained HD networks. 
@@ -325,7 +405,6 @@ def sim_batch_net_ODE(batch, net, device, shape=None, space='ES', int_mode='melt
     print('*'*40)
 
     #set/adjust args -- esp device for net attributes 
-    assert net.space == space, 'Space network was trained in needs to match ODE sim space!'
     g = torch.from_numpy(net.g.cpu().numpy()).type(torch.float32).to(device)
     data_eigs = torch.from_numpy(net.data_eigs).to(device)
     W = torch.from_numpy(net.W.cpu().numpy()).type(torch.float32).to(device) 
@@ -344,7 +423,7 @@ def sim_batch_net_ODE(batch, net, device, shape=None, space='ES', int_mode='melt
     #Run actual ODE sim
     #--------------------------------------------------------#
     
-    ode_res_dict = do_ODE_sim(batch, net, shape, space, g, W, xi_star, get_netout, int_mode, n_iters, end_time, A0, gamma0, rho, \
+    ode_res_dict = do_ODE_sim(batch, net, shape, g, W, xi_star, get_netout, int_mode, n_iters, end_time, A0, gamma0, rho, \
     save_freq, disc=disc, solver=solver, eps=eps)
     
     if endsim_imgs_only: 

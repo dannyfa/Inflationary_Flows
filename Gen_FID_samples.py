@@ -144,10 +144,7 @@ def main(save_dir, network_pkl, subdirs, seeds, bs, **kwargs):
     if dist.get_rank() == 0:
         torch.distributed.barrier()    
     
-    #set up space to run ODE sim on 
-    space = net.space     
-
-    
+      
     #set up num_batches and seeds per batch 
     num_batches = ((len(seeds) - 1) // (bs * dist.get_world_size()) + 1) * dist.get_world_size()
     all_batches = torch.as_tensor(seeds).tensor_split(num_batches)
@@ -170,7 +167,7 @@ def main(save_dir, network_pkl, subdirs, seeds, bs, **kwargs):
 
         # Generate images.
         images = sim_batch_net_ODE(samples, net, device, shape=[batch_size, opts.img_ch, opts.img_size, opts.img_size], \
-                                     space=space, int_mode='gen', n_iters=opts.n_iters, end_time=opts.end_time, \
+                                     int_mode='gen', n_iters=opts.n_iters, end_time=opts.end_time, \
                                          A0=opts.end_vars, save_freq=opts.save_freq, disc=opts.disc, solver=opts.solver, \
                                              eps=opts.vpode_disc_eps, endsim_imgs_only=True) 
 
@@ -187,6 +184,7 @@ def main(save_dir, network_pkl, subdirs, seeds, bs, **kwargs):
                 PIL.Image.fromarray(image[:, :, 0], 'L').save(image_path)
             else:
                 PIL.Image.fromarray(image, 'RGB').save(image_path)
+
 
     # Done.
     torch.distributed.barrier()
