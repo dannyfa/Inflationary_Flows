@@ -20,7 +20,7 @@ import gc
 import dnnlib
 from torch_utils import misc
 from torch_utils import distributed as dist 
-from ifs_ode_sim.hd_ODE import sim_batch_net_ODE
+from pfODE_sim.ODE import sim_batch_net_ODE
 
 #-------------------------------------------------------------------------
 @click.command()

@@ -32,7 +32,6 @@ import urllib
 import urllib.request
 import uuid
 import torch 
-from numpy import trapz
 from torch.utils.data.dataset import Dataset
 from sklearn.decomposition import PCA
 from sklearn import datasets as sklrn_dsets

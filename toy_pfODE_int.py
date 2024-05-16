@@ -29,7 +29,7 @@ import numpy as np
 import torch
 import dnnlib
 from torch_utils import distributed as dist
-from ifs_ode_sim.toy_ODE import sim_batch_discrete_ODE, sim_batch_net_ODE
+from pfODE_sim.toy_ODE import sim_batch_discrete_ODE, sim_batch_net_ODE
 
 #------------------------------------------------------------------------#
 

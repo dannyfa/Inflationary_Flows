@@ -22,7 +22,7 @@ import dnnlib
 import gc 
 from sklearn.covariance import EmpiricalCovariance
 from torch_utils import distributed as dist
-from ifs_ode_sim.hd_ODE import sim_batch_net_ODE
+from pfODE_sim.ODE import sim_batch_net_ODE
 
 #----------------------------------------------------------#
 #From EDM repo 
