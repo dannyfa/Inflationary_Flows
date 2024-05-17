@@ -80,7 +80,7 @@ def parse_int_list(s):
 @click.option('--img_size',                help='Size of imgs being processed.', metavar='INT',                                                               type=int, default=32, show_default=True)
 @click.option('--img_ch',                  help='Number of channels in imgs being processed.', metavar='INT',                                                 type=int, default=3, show_default=True)
 @click.option('--gen_source',              help='Method used to construct gen samples', metavar='diag|empirical',                                             type=click.Choice(['diag', 'empirical']), default='diag', show_default=True)
-@click.option('--eps',                     help='Variance for compressed dims during PRR gen. (if gen from diag)', metavar='FLOAT',                           type=float, default=1e-7, show_default=True)
+@click.option('--eps',                     help='Variance for compressed dims during PRR gen. (if gen from diag)', metavar='FLOAT',                           type=float, default=1., show_default=True)
 @click.option('--prev_melt',               help='Path to previous melt results to be used for gen (if from empirical covariance)', metavar='STR',             type=str, default='', show_default=True)
 
 #------------------------------------------------------------------------------#
