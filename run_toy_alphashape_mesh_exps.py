@@ -67,7 +67,7 @@ def main(network_pkl, save_dir, data_name, **kwargs):
         os.makedirs(save_dir)
         
     #set up schedule name 
-    schedule = 'PRP' if opts.data_dim==opts.dims_to_keep else 'PRRto{}D'.format(opts.data_dim - opts.dims_to_keep)
+    schedule = 'PRP' if opts.data_dim==opts.dims_to_keep else 'PRRto{}D'.format(opts.dims_to_keep)
         
     #decide which coverage calc method to use
     calc_coverages = dnnlib.util.compute_coverages_2Dalphashape if opts.data_dim==2 else dnnlib.util.compute_coverages_3Dmesh
