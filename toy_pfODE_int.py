@@ -171,8 +171,6 @@ def discrete(save_dir, data_name, total_samples, **kwargs):
 @click.option('--h',                       help='Step size for ODE integration', metavar='FLOAT',                                                                                          type=click.FloatRange(max=1e-1, max_open=True), default=1e-2, show_default=True)
 @click.option('--end_vars',                help='Ending variance per dim (A0)', metavar='FLOAT',                                                                                           type=float, default=1., show_default=True)
 @click.option('--eps',                     help='End of melt/inflation variance for compressed dims (if prr)', metavar='FLOAT',                                                            type=float, default=1, show_default=True)
-@click.option('--rho',                     help='Exp. growth constant', metavar='FLOAT',                                                                                                   type=float, default=1., show_default=True)
-@click.option('--gamma0',                  help='Minimum melting kernel variance', metavar='FLOAT',                                                                                        type=float, default=5e-4, show_default=True)
 
 
 @click.option('--save_freq',               help='How often to save ODE integration steps', metavar='INT',                                                                                  type=click.IntRange(min=1), default=10, show_default=True)
