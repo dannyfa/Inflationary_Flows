@@ -90,7 +90,7 @@ Of note, network pickle file passed (`--network`) schedule needs to match `--dat
 
 To run PR-Reducing (PRR) simulations, pass option `--eps=xx` using values listed in **Table 3 of Appendix B.4.1** for the different datasets. These correspond to latent space compressed dimension variances, used to construct diagonal covariance from which latent samples are obtained prior to running generation.
 
-Finally, same script above also allows possibility of simulating our pfODEs using discrete scores (i.e., scores computed from batch of data directly, instead of using trained networks). These are meant as approximations only and can be used for sanity checking. To run such simulations, use instead: 
+Finally, same script also allows possibility of simulating our pfODEs using discrete scores (i.e., scores computed from batch of data directly, instead of using trained networks). These are meant as approximations only and can be used for sanity checking. To run such simulations, use instead: 
 
 ```.bash
 torchrun --rdzv_endpoint=0.0.0.0:29501 toy_pfODE_int.py discrete --save_dir=out \
@@ -157,7 +157,7 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 --network=networks/network.pkl --save_dir
 Here, options for `--network`, `--data_dim`, and `--dims_to_keep` need to match for a given schedule (e.g., PRP trained net for 2D circles, needs `data_dim==2` and `dims_to_keep==2`). 
 Same toy dataset options are supported here (see above) - specific toy data to use should be specified using `--data_name` option. This needs to match data network was trained on.
 
-Finally, `--steps` determines the number of linearly spaced ODE integration steps taken. This value can obtained using the `tmax` values highlighted in **Table 2 of Appendix B.4.1** (e.g., for a step size of $10^{-2}$ (`--h=1e-2`), 
+Finally, `--steps` determines the number of linearly spaced ODE integration steps taken. This value can be obtained using the `tmax` values highlighted in **Table 2 of Appendix B.4.1** (e.g., for a step size of $10^{-2}$ (`--h=1e-2`), 
 and `tmax=7.01`, we should use `--steps=701`). Script uses 20K test points and 200 boundary points per bounding sphere as defaults. 
 
 ## Computing Network Residual Cross-Correlations
@@ -186,7 +186,7 @@ Second command loads .npz file output from first command and uses its values to 
 `--data_dim`, `--dims_to_keep`, `--n_time_pts`, and `--n_samples` should match values passed to first command. 
 
 Computed cross-correlation matrices for network outputs and residuals are saved to a file named `{data_name}_{schedule}_toy_autocorrelations.npz`. 
-Plots shown in Appendix C.1 were obtained by looking into network residual cross-correlations (under `net_residuals_acs` key of output file).
+Plots shown in **Appendix C.1** were obtained by looking into network residual cross-correlations (under `net_residuals_acs` key of output file).
 
 **Image Networks**
 
@@ -206,10 +206,10 @@ and across specified number of time pts and will save these as .npz files named 
 
 Second command will load the files output by first command and will use these to calculate cross-correlations across different time pts/lags. Computed cross-correlatices of network outputs
 and residuals are saved to files named `{data-name}_{schedule}_autocorrelations_times0_{t}.npz`  for each time pt t. 
-Plots shown in Appendix C.1 were obtained by looking into network residual cross-correlations (under `net_residuals_acs` key of output files).
+Plots shown in **Appendix C.1** were obtained by looking into network residual cross-correlations (under `net_residuals_acs` key of output files).
 
 ## Acknowledgments
-This implementation relies heavily on the follwoing pre-existing repository:[https://github.com/NVlabs/edm](https://github.com/NVlabs/edm). We use similar data preprocessing, augmentation, architectures, and training to the above, safe for modifications needed to implement our proposed model and probability flow ODEs (pfODEs).
+This implementation relies heavily on the following pre-existing repository:[https://github.com/NVlabs/edm](https://github.com/NVlabs/edm). We use similar data preprocessing, augmentation, architectures, and training to the above, safe for modifications needed to implement our proposed model and probability flow ODEs (pfODEs).
 
 
 ## License
