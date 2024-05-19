@@ -1,153 +1,21 @@
-## Elucidating the Design Space of Diffusion-Based Generative Models (EDM)<br><sub>Official PyTorch implementation of the NeurIPS 2022 paper</sub>
+## Inflationary Flows: Calibrated Bayesian Inference with Diffusion-Based Models<br>
 
-![Teaser image](./docs/teaser-1920x640.jpg)
+![Teaser image](./docs/figure1.pdf)
 
-**Elucidating the Design Space of Diffusion-Based Generative Models**<br>
-Tero Karras, Miika Aittala, Timo Aila, Samuli Laine
-<br>https://arxiv.org/abs/2206.00364<br>
+**Inflationary Flows: Calibrated Bayesian Inference with Diffusion-Based Models**<br>
 
-Abstract: *We argue that the theory and practice of diffusion-based generative models are currently unnecessarily convoluted and seek to remedy the situation by presenting a design space that clearly separates the concrete design choices. This lets us identify several changes to both the sampling and training processes, as well as preconditioning of the score networks. Together, our improvements yield new state-of-the-art FID of 1.79 for CIFAR-10 in a class-conditional setting and 1.97 in an unconditional setting, with much faster sampling (35 network evaluations per image) than prior designs. To further demonstrate their modular nature, we show that our design changes dramatically improve both the efficiency and quality obtainable with pre-trained score networks from previous work, including improving the FID of a previously trained ImageNet-64 model from 2.07 to near-SOTA 1.55, and after re-training with our proposed improvements to a new SOTA of 1.36.*
-
-For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/)
+Abstract: *Beyond estimating parameters of interest from data, one of the key goals of statistical inference is to properly quantify uncertainty in these estimates. In Bayesian inference, this uncertainty is provided by the posterior distribution, the computation of which typically involves an intractable high-dimensional integral. Among available approximation methods, sampling-based approaches come with strong theoretical guarantees but scale poorly to large problems, while variational approaches scale well but offer few theoretical guarantees. In particular, variational methods are known to produce overconfident estimates of posterior uncertainty and are typically non-identifiable, with many latent variable configurations generating equivalent predictions. Here, we address these challenges by showing how diffusion-based models (DBMs), which have recently produced state-of-the-art performance in generative modeling tasks, can be repurposed for performing calibrated, identifiable Bayesian inference. By exploiting a previously established connection between the stochastic and probability flow ordinary differential equations (pfODEs) underlying DBMs, we derive a class of models, \emph{inflationary flows,} that uniquely and deterministically map high-dimensional data to a lower-dimensional Gaussian distribution via ODE integration. This map is both invertible and neighborhood-preserving, with controllable numerical error, with the result that uncertainties in the data are correctly propagated to the latent space. We demonstrate how such maps can be learned via standard DBM training using a novel noise schedule and are effective at both preserving and reducing intrinsic data dimensionality. The result is a class of highly expressive generative models, uniquely defined on a low-dimensional latent space, that afford principled Bayesian inference.*
 
 ## Requirements
 
 * Linux and Windows are supported, but we recommend Linux for performance and compatibility reasons.
-* 1+ high-end NVIDIA GPU for sampling and 8+ GPUs for training. We have done all testing and development using V100 and A100 GPUs.
-* 64-bit Python 3.8 and PyTorch 1.12.0 (or later). See https://pytorch.org for PyTorch install instructions.
+* 1 high-end NVIDIA GPU. All testing and development done using NVIDIA RTX 3090 and 4090 GPUS. Code tested for single-GPU training and generation, though it can easily be adapted for multi-GPU setting.
+* 64-bit Python 3.8 and PyTorch 2.1.2. See https://pytorch.org for PyTorch install instructions.
 * Python libraries: See [environment.yml](./environment.yml) for exact library dependencies. You can use the following commands with Miniconda3 to create and activate your Python environment:
-  - `conda env create -f environment.yml -n edm`
-  - `conda activate edm`
-* Docker users:
-  - Ensure you have correctly installed the [NVIDIA container runtime](https://docs.docker.com/config/containers/resource_constraints/#gpu).
-  - Use the [provided Dockerfile](./Dockerfile) to build an image with the required library dependencies.
+  - `conda env create -f environment.yml -n ifs`
+  - `conda activate ifs`
 
-## Getting started
-
-To reproduce the main results from our paper, simply run:
-
-```.bash
-python example.py
-```
-
-This is a minimal standalone script that loads the best pre-trained model for each dataset and generates a random 8x8 grid of images using the optimal sampler settings. Expected results:
-
-| Dataset  | Runtime | Reference image
-| :------- | :------ | :--------------
-| CIFAR-10 | ~6 sec  | [`cifar10-32x32.png`](./docs/cifar10-32x32.png)
-| FFHQ     | ~28 sec | [`ffhq-64x64.png`](./docs/ffhq-64x64.png)
-| AFHQv2   | ~28 sec | [`afhqv2-64x64.png`](./docs/afhqv2-64x64.png)
-| ImageNet | ~5 min  | [`imagenet-64x64.png`](./docs/imagenet-64x64.png)
-
-The easiest way to explore different sampling strategies is to modify [`example.py`](./example.py) directly. You can also incorporate the pre-trained models and/or our proposed EDM sampler in your own code by simply copy-pasting the relevant bits. Note that the class definitions for the pre-trained models are stored within the pickles themselves and loaded automatically during unpickling via [`torch_utils.persistence`](./torch_utils/persistence.py). To use the models in external Python scripts, just make sure that `torch_utils` and `dnnlib` are accesible through `PYTHONPATH`.
-
-**Docker**: You can run the example script using Docker as follows:
-
-```.bash
-# Build the edm:latest image
-docker build --tag edm:latest .
-
-# Run the generate.py script using Docker:
-docker run --gpus all -it --rm --user $(id -u):$(id -g) \
-    -v `pwd`:/scratch --workdir /scratch -e HOME=/scratch \
-    edm:latest \
-    python example.py
-```
-
-Note: The Docker image requires NVIDIA driver release `r520` or later.
-
-The `docker run` invocation may look daunting, so let's unpack its contents here:
-
-- `--gpus all -it --rm --user $(id -u):$(id -g)`: with all GPUs enabled, run an interactive session with current user's UID/GID to avoid Docker writing files as root.
-- ``-v `pwd`:/scratch --workdir /scratch``: mount current running dir (e.g., the top of this git repo on your host machine) to `/scratch` in the container and use that as the current working dir.
-- `-e HOME=/scratch`: specify where to cache temporary files. Note: if you want more fine-grained control, you can instead set `DNNLIB_CACHE_DIR` (for pre-trained model download cache). You want these cache dirs to reside on persistent volumes so that their contents are retained across multiple `docker run` invocations.
-
-## Pre-trained models
-
-We provide pre-trained models for our proposed training configuration (config F) as well as the baseline configuration (config A):
-
-- [https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/](https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/)
-- [https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/baseline/](https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/baseline/)
-
-To generate a batch of images using a given model and sampler, run:
-
-```.bash
-# Generate 64 images and save them as out/*.png
-python generate.py --outdir=out --seeds=0-63 --batch=64 \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl
-```
-
-Generating a large number of images can be time-consuming; the workload can be distributed across multiple GPUs by launching the above command using `torchrun`:
-
-```.bash
-# Generate 1024 images using 2 GPUs
-torchrun --standalone --nproc_per_node=2 generate.py --outdir=out --seeds=0-999 --batch=64 \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl
-```
-
-The sampler settings can be controlled through command-line options; see [`python generate.py --help`](./docs/generate-help.txt) for more information. For best results, we recommend using the following settings for each dataset:
-
-```.bash
-# For CIFAR-10 at 32x32, use deterministic sampling with 18 steps (NFE = 35)
-python generate.py --outdir=out --steps=18 \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl
-
-# For FFHQ and AFHQv2 at 64x64, use deterministic sampling with 40 steps (NFE = 79)
-python generate.py --outdir=out --steps=40 \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-ffhq-64x64-uncond-vp.pkl
-
-# For ImageNet at 64x64, use stochastic sampling with 256 steps (NFE = 511)
-python generate.py --outdir=out --steps=256 --S_churn=40 --S_min=0.05 --S_max=50 --S_noise=1.003 \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-imagenet-64x64-cond-adm.pkl
-```
-
-Besides our proposed EDM sampler, `generate.py` can also be used to reproduce the sampler ablations from Section 3 of our paper. For example:
-
-```.bash
-# Figure 2a, "Our reimplementation"
-python generate.py --outdir=out --steps=512 --solver=euler --disc=vp --schedule=vp --scaling=vp \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/baseline/baseline-cifar10-32x32-uncond-vp.pkl
-
-# Figure 2a, "+ Heun & our {t_i}"
-python generate.py --outdir=out --steps=128 --solver=heun --disc=edm --schedule=vp --scaling=vp \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/baseline/baseline-cifar10-32x32-uncond-vp.pkl
-
-# Figure 2a, "+ Our sigma(t) & s(t)"
-python generate.py --outdir=out --steps=18 --solver=heun --disc=edm --schedule=linear --scaling=none \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/baseline/baseline-cifar10-32x32-uncond-vp.pkl
-```
-
-## Calculating FID
-
-To compute Fr&eacute;chet inception distance (FID) for a given model and sampler, first generate 50,000 random images and then compare them against the dataset reference statistics using `fid.py`:
-
-```.bash
-# Generate 50000 images and save them as fid-tmp/*/*.png
-torchrun --standalone --nproc_per_node=1 generate.py --outdir=fid-tmp --seeds=0-49999 --subdirs \
-    --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl
-
-# Calculate FID
-torchrun --standalone --nproc_per_node=1 fid.py calc --images=fid-tmp \
-    --ref=https://nvlabs-fi-cdn.nvidia.com/edm/fid-refs/cifar10-32x32.npz
-```
-
-Both of the above commands can be parallelized across multiple GPUs by adjusting `--nproc_per_node`. The second command typically takes 1-3 minutes in practice, but the first one can sometimes take several hours, depending on the configuration. See [`python fid.py --help`](./docs/fid-help.txt) for the full list of options.
-
-Note that the numerical value of FID varies across different random seeds and is highly sensitive to the number of images. By default, `fid.py` will always use 50,000 generated images; providing fewer images will result in an error, whereas providing more will use a random subset. To reduce the effect of random variation, we recommend repeating the calculation multiple times with different seeds, e.g., `--seeds=0-49999`, `--seeds=50000-99999`, and `--seeds=100000-149999`. In our paper, we calculated each FID three times and reported the minimum.
-
-Also note that it is important to compare the generated images against the same dataset that the model was originally trained with. To facilitate evaluation, we provide the exact reference statistics that correspond to our pre-trained models:
-
-* [https://nvlabs-fi-cdn.nvidia.com/edm/fid-refs/](https://nvlabs-fi-cdn.nvidia.com/edm/fid-refs/)
-
-For ImageNet, we provide two sets of reference statistics to enable apples-to-apples comparison: `imagenet-64x64.npz` should be used when evaluating the EDM model (`edm-imagenet-64x64-cond-adm.pkl`), whereas `imagenet-64x64-baseline.npz` should be used when evaluating the baseline model (`baseline-imagenet-64x64-cond-adm.pkl`); the latter was originally trained by Dhariwal and Nichol using slightly different training data.
-
-You can compute the reference statistics for your own datasets as follows:
-
-```.bash
-python fid.py ref --data=datasets/my-dataset.zip --dest=fid-refs/my-dataset.npz
-```
-
-## Preparing datasets
+## Data Preparation 
 
 Datasets are stored in the same format as in [StyleGAN](https://github.com/NVlabs/stylegan3): uncompressed ZIP archives containing uncompressed PNG files and a metadata file `dataset.json` for labels. Custom datasets can be created from a folder containing images; see [`python dataset_tool.py --help`](./docs/dataset-tool-help.txt) for more information.
 
@@ -158,89 +26,167 @@ python dataset_tool.py --source=downloads/cifar10/cifar-10-python.tar.gz \
     --dest=datasets/cifar10-32x32.zip
 python fid.py ref --data=datasets/cifar10-32x32.zip --dest=fid-refs/cifar10-32x32.npz
 ```
-
-**FFHQ:** Download the [Flickr-Faces-HQ dataset](https://github.com/NVlabs/ffhq-dataset) as 1024x1024 images and convert to ZIP archive at 64x64 resolution:
-
-```.bash
-python dataset_tool.py --source=downloads/ffhq/images1024x1024 \
-    --dest=datasets/ffhq-64x64.zip --resolution=64x64
-python fid.py ref --data=datasets/ffhq-64x64.zip --dest=fid-refs/ffhq-64x64.npz
-```
-
-**AFHQv2:** Download the updated [Animal Faces-HQ dataset](https://github.com/clovaai/stargan-v2/blob/master/README.md#animal-faces-hq-dataset-afhq) (`afhq-v2-dataset`) and convert to ZIP archive at 64x64 resolution:
+**AFHQv2:** Download the updated [Animal Faces-HQ dataset](https://github.com/clovaai/stargan-v2/blob/master/README.md#animal-faces-hq-dataset-afhq) (`afhq-v2-dataset`) and convert to ZIP archive at 32x32 resolution:
 
 ```.bash
 python dataset_tool.py --source=downloads/afhqv2 \
-    --dest=datasets/afhqv2-64x64.zip --resolution=64x64
-python fid.py ref --data=datasets/afhqv2-64x64.zip --dest=fid-refs/afhqv2-64x64.npz
+    --dest=datasets/afhqv2-32x32.zip --resolution=32x32
+python fid.py ref --data=datasets/afhqv2-32x32.zip --dest=fid-refs/afhqv2-32x32.npz
 ```
 
-**ImageNet:** Download the [ImageNet Object Localization Challenge](https://www.kaggle.com/competitions/imagenet-object-localization-challenge/data) and convert to ZIP archive at 64x64 resolution:
+## Training New Models 
+
+**Toy DataSets** To train a model on a given toy dataset, run: 
+```.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 --outdir=out --data_name=circles --data_dim=2 --dims_to_keep=2 
+```
+
+Code supports following options for toy datasets: 
+
+1) 2D circles (circles)
+2) 2D sine (sine2)
+3) 2D moons (moons)
+4) 3D S Curve (s_curve)
+5) 3D Swirl (swirl)
+
+Note that `data_dim` and `dims_to_keep` arguments define schedule to be used - e.g., `data_dim==2` and `dims_to_keep==2` corresponds to PR-Preserving schedule for a 2D dataset. See Table 2 on Appendix B.4.1 for details on training time (in Kimgs), `tmax` argument choice, and specific `data_dim` and `dims_to_keep` combinations used for each toy experiment. 
+Here, s_curve and swirl correspond to datasets scaled to unit variance across all dimensions. To use datasets scaled differently (as mentioned in Appendix C2.2) pass instead `alt_s_curve` and `alt_swirl` in above command.
+
+**Image Datasets** To train a model on a given image dataset: 
+
+First, make sure you have downloaded and prepared the data using the `dataset_tool.py` script, as above. Then, run: 
+```.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 --outdir=out --data=datasets/cifar10-32x32.zip  --data_dim=3072 \
+--dims_to_keep=3072 --rho=2 --batch=512  
+```
+Once again, `data_dim` and `dims_to_keep` define the specific schedule to be used. For instance, `data_dim==3072` and `dims_to_keep==3072` corresponds to PR-Preserving schedule for a 3x32x32 dataset. See Tables 4, 5 of Appendix B.4.2 for additional details on train hyper-parameters used for the different image benchmark experiments. 
+
+
+## Simulating PR-Preserving and PR-Reducing pfODEs
+
+**Toy Datasets** To simulate our proposed pfODEs for toy datasets, run: 
 
 ```.bash
-python dataset_tool.py --source=downloads/imagenet/ILSVRC/Data/CLS-LOC/train \
-    --dest=datasets/imagenet-64x64.zip --resolution=64x64 --transform=center-crop
-python fid.py ref --data=datasets/imagenet-64x64.zip --dest=fid-refs/imagenet-64x64.npz
+torchrun --rdzv_endpoint=0.0.0.0:29501 toy_pfODE_int.py net --save_dir=out --network=/networks/network.pkl --data_name=circles, \
+--data_dim=2 --dims_to_keep=2  
 ```
 
-## Training new models
+Simulation here entails inflation and roundtrip (from end of inflation), plus generation. 
+All 3 simulations are saved separately to .npz files under `save_dir`. Output files are named `{data_name}_{schedule}_net_{sim_type}_results.npz`, where `data_name` is the same as in argument passed, `schedule` corresponds to choice between `PRP` or `PRRto{x}D` (e.g., `PRRto1D`) and `sim_type` can be either `melt` (i.e., inflation), `rountrip`, or `gen`. 
+Additionally, we also save a file named `{data_name}_{schedule}_net_sim_params.json`, which contains all parameters used in simulations.
+Options for `data_name` are the same as mentioned, above. Of note, schedule choice is determined by network pickle file passed (i.e., by `network.pkl`). Arguments `data_dim` and `dims_to_keep` are used only to determine schedule component of output file names and should, ultimately, match network specs. 
+To run PR-Reducing (PRR) simulations, pass option `--eps=xx` using values listed in Table 3 of Appendix B.4.1 for the different datasets. These correspond to latent space compressed dimension variances, used to construct diagonal covariance from which latent samples are obtained prior to running generation.
 
-You can train new models using `train.py`. For example:
+Finally, same script above also allows possibility of simulating our pfODEs using discrete scores (i.e., scores computed from batch of data directly, instead of using trained networks). These are meant as approximations only and can be used for sanity checking. To run such simulations, use instead: 
 
 ```.bash
-# Train DDPM++ model for class-conditional CIFAR-10 using 8 GPUs
-torchrun --standalone --nproc_per_node=8 train.py --outdir=training-runs \
-    --data=datasets/cifar10-32x32.zip --cond=1 --arch=ddpmpp
+torchrun --rdzv_endpoint=0.0.0.0:29501 toy_pfODE_int.py discrete --save_dir=out --data_name=circles, \
+--data_dim=2 --dims_to_keep=2  
 ```
 
-The above example uses the default batch size of 512 images (controlled by `--batch`) that is divided evenly among 8 GPUs (controlled by `--nproc_per_node`) to yield 64 images per GPU. Training large models may run out of GPU memory; the best way to avoid this is to limit the per-GPU batch size, e.g., `--batch-gpu=32`. This employs gradient accumulation to yield the same results as using full per-GPU batches. See [`python train.py --help`](./docs/train-help.txt) for the full list of options.
+In this case, `data_dim` and `dims_to_keep` determnine actual schedules simulated. If running PR-Reducing simulations, pass argument `--eps=xx` using values shown in Table 3 of Appendix B.4.1. 
 
-The results of each training run are saved to a newly created directory, for example `training-runs/00000-cifar10-cond-ddpmpp-edm-gpus8-batch64-fp32`. The training loop exports network snapshots (`network-snapshot-*.pkl`) and training states (`training-state-*.pt`) at regular intervals (controlled by `--snap` and `--dump`). The network snapshots can be used to generate images with `generate.py`, and the training states can be used to resume the training later on (`--resume`). Other useful information is recorded in `log.txt` and `stats.jsonl`. To monitor training convergence, we recommend looking at the training loss (`"Loss/loss"` in `stats.jsonl`) as well as periodically evaluating FID for `network-snapshot-*.pkl` using `generate.py` and `fid.py`.
+**Image Datasets** To simulate our proposed pfODEs for a batch of samples from an image dataset, run: 
 
-The following table lists the exact training configurations that we used to obtain our pre-trained models:
+```.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 pfODE_int.py --save_dir=out, --data_root=datasets/cifar10-32x32.zip --network=networks/network.pkl, \
+--data_name=cifar10, --bs=256, --dims_to_keep=3072
+```
+By default, this will run inflation, roundtrip (from inflation), and generation for a batch of data of specified  size (i.e., `--bs`). However, one can also run these simulations separately by passing instead `--sim_type={sim_name}` where `sim_name` can be either `melt` (i.e., inflation), `roundtrip`, or `gen`. IF running roundtrip, script expects a previous inflation to start from -- this should be passed using `--prev_melt=/exps/cifar10_PRP_melt.npz`. 
+As in toy case, simulations are saved to separate .npz files and all parameters used are logged to `{data_name}_{schedule}_HD_pfODE_int_sim_params.json`.
+To run PR-Reducing generation (or all simulations, including generation) pass `--eps==xx`, using values shown in Table 7 Of Appendix B.5. These values represent latent space variance for compressed dimensions and are used to construct diagonal covariance from which we obtain initial MVN samples for generation.
 
-| <sub>Model</sub> | <sub>GPUs</sub> | <sub>Time</sub> | <sub>Options</sub>
-| :-- | :-- | :-- | :--
-| <sub>cifar10&#8209;32x32&#8209;cond&#8209;vp</sub>   | <sub>8xV100</sub>  | <sub>~2&nbsp;days</sub>  | <sub>`--cond=1 --arch=ddpmpp`</sub>
-| <sub>cifar10&#8209;32x32&#8209;cond&#8209;ve</sub>   | <sub>8xV100</sub>  | <sub>~2&nbsp;days</sub>  | <sub>`--cond=1 --arch=ncsnpp`</sub>
-| <sub>cifar10&#8209;32x32&#8209;uncond&#8209;vp</sub> | <sub>8xV100</sub>  | <sub>~2&nbsp;days</sub>  | <sub>`--cond=0 --arch=ddpmpp`</sub>
-| <sub>cifar10&#8209;32x32&#8209;uncond&#8209;ve</sub> | <sub>8xV100</sub>  | <sub>~2&nbsp;days</sub>  | <sub>`--cond=0 --arch=ncsnpp`</sub>
-| <sub>ffhq&#8209;64x64&#8209;uncond&#8209;vp</sub>    | <sub>8xV100</sub>  | <sub>~4&nbsp;days</sub>  | <sub>`--cond=0 --arch=ddpmpp --batch=256 --cres=1,2,2,2 --lr=2e-4 --dropout=0.05 --augment=0.15`</sub>
-| <sub>ffhq&#8209;64x64&#8209;uncond&#8209;ve</sub>    | <sub>8xV100</sub>  | <sub>~4&nbsp;days</sub>  | <sub>`--cond=0 --arch=ncsnpp --batch=256 --cres=1,2,2,2 --lr=2e-4 --dropout=0.05 --augment=0.15`</sub>
-| <sub>afhqv2&#8209;64x64&#8209;uncond&#8209;vp</sub>  | <sub>8xV100</sub>  | <sub>~4&nbsp;days</sub>  | <sub>`--cond=0 --arch=ddpmpp --batch=256 --cres=1,2,2,2 --lr=2e-4 --dropout=0.25 --augment=0.15`</sub>
-| <sub>afhqv2&#8209;64x64&#8209;uncond&#8209;ve</sub>  | <sub>8xV100</sub>  | <sub>~4&nbsp;days</sub>  | <sub>`--cond=0 --arch=ncsnpp --batch=256 --cres=1,2,2,2 --lr=2e-4 --dropout=0.25 --augment=0.15`</sub>
-| <sub>imagenet&#8209;64x64&#8209;cond&#8209;adm</sub> | <sub>32xA100</sub> | <sub>~13&nbsp;days</sub> | <sub>`--cond=1 --arch=adm --duration=2500 --batch=4096 --lr=1e-4 --ema=50 --dropout=0.10 --augment=0 --fp16=1 --ls=100 --tick=200`</sub>
 
-For ImageNet-64, we ran the training on four NVIDIA DGX A100 nodes, each containing 8 Ampere GPUs with 80 GB of memory. To reduce the GPU memory requirements, we recommend either training the model with more GPUs or limiting the per-GPU batch size with `--batch-gpu`. To set up multi-node training, please consult the [torchrun documentation](https://pytorch.org/docs/stable/elastic/run.html).
+## Computing FID scores 
+
+To compute FID scores for image datasets, run: 
+
+```.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 gen_fid_samples --save_dir=fid-tmp, --network=networks/network.pkl, \
+--bs=500, --seeds=0-49999 --subdirs --dims_to_keep=3072 
+
+torchrun --rdzv_endpoint=0.0.0.0:29501 fid.py calc --images=fid-tmp, \
+--ref=fid-refs/cifar10-32x32.npz
+```
+
+The first command will generate several samples (same as number of seeds specified using `--seeds`) and will save these to a specified directory, with every 1000 new images saved under a separate subdirectory.
+Note that schedule network was trained on needs to match `--dims_to_keep` option given (e.g., PRP network needs `--dims_to_keep=3072` for 3x32x32 data). 
+If running generation for PR-Reducing schedules, adjust `--dims_to_keep` and `--network` options appropriately, and pass `--eps=xx` using values listed on Table 7 of Appendix B.5. 
+
+Second command computes actual fid score for the previously generated images and uses reference file created during dataset preparation (see comments above).
+
+## Computing Roundtrip MSE 
+
+To compute roundtrip MSE for image datasets, run: 
+
+```.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 calc_roundtrip_mse.py --save_dir=mse-tmp, --data_root=datasets/cifar10-32x32.zip, \
+--network=networks/network.pkl, --data_name=cifar10, --bs=1000, --total_samples=10000, --seed=42, --dims_to_keep=3072
+```
+
+Here, once again, schedule for `--network` and `dims_to_keep` optiosn need to match. Total number of samples used for roundtrip experiment can be changed using `--total_samples` and `--bs` determines batch size to use when simulating rountrips. Finally, `--seed` determines seed to use when sampling from given target dataset at the beginning of melt/inflation.
+Script outputs a .json file containing all simulation parameters along with mse result (averaged across all samples and dimensions).
+
+## Running Toy 2D alpha-shape or 3D mesh experiments
+
+To run alpha-shape or mesh toy coverage experiments, run: 
+
+```.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 --network=networks/network.pkl --save_dir=toy_mesh_exps-tmp, \
+--data_name=circles, --data_dim=2, --dims_to_keep=2 --steps=701 --h=1e-2
+```
+
+Here, options for `--network`, `--data_dim`, and `dims_to_keep` need to match for a given schedule (e.g., PRP trained net for 2D circles, needs `data_dim==2` and `dims_to_keep==2`). 
+Same toy dataset options are supported here (see above) - specific toy data to use should be specified using `--data_name` option. This needs to match data network was trained on.
+Finally, `--steps` determines the number of linearly spaced ODE integration steps taken. This value can obtained using the tmax values highlighted in Table 2 of Appendix B.4.1 (e.g., for a step size of $10^{-2}$ (`--h=1e-2`), 
+and tmax=7.01, we should use `steps==701`). Script uses 20K test points and 200 boundary points per bounding sphere as default. 
+
+## Computing Network Residual Cross-Correlations
+
+**Toy Networks**
+Run: 
+```
+.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 calc_net_residuals_autocorrelations.py extracttoys --save_dir=toy_net_outputs-tmp, \
+--data_name=circles, --network=networks/network.pkl, --n_time_pts=701, --h=1e-2, --n_samples=10000, \
+--data_dim=2, --dims_to_keep=2
+
+python calc_net_residuals_autocorrelations.py calctoys --save_dir=toy_net_acs-tmp, \
+--res_root=toy_net_outputs-tmp/circles_PRP_toy_net_outputs_residuals.npz, --data_name=circles, \
+--n_time_pts=701, --data_dim=2, --dims_to_keep=2, --n_samples=10000
+```
+First command extracts network outputs and residuals for a given number of time pts and step size (for ODE integration/discretization schedule). 
+Once again, options for `--network`, `--data_dim`, and `dims_to_keep` need to match for a given schedule (e.g., PRP trained net for 2D circles, needs `data_dim==2` and `dims_to_keep==2`). 
+Same toy dataset options are supported here (see above) - specific toy data to use should be specified using `--data_name` option. This needs to match data network was trained on.
+Extracted network outputs and residuals are saved to a file named `{data_name}_{schedule}_toy_net_outputs_residuals.npz`, which is saved under specified `--save_dir` option.
+
+Second command loads .npz file output from first command and uses its values to calculate cross-correlations for the different time points/lags passed. Options passed for `--data_name`, 
+`--data_dim`, `--dims_to_keep`, `--n_time_pts`, and `--n_samples` should match values passed to first command. Computed cross-correlation matrices for network outputs and residuals 
+are saved to a file named `{data_name}_{schedule}_toy_autocorrelations.npz`. 
+Plots shown in Appendix C.1 were obtained by looking into network residual cross correlations (under `net_residuals_acs` key of output file).
+
+**Image Networks**
+Run: 
+```.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 calc_net_residuals_autocorrelations.py extract --save_dir=net_outputs-tmp, \
+--data_root=datasets/cifar10-32x32.zip, --network=networks/network.pkl, --data_name=cifar10, \
+--n_samples=50000 --bs=1000 --dims_to_keep=3072 --n_time_pts=256
+
+torchrun --rdzv_endpoint=0.0.0.0:29501 calc_net_residuals_autocorrelations.py calc --save_dir=net_acs-tmp, \
+--res_root=net_outputs-tmp, --data_name=cifar10, --n_time_pts=256, --dims_to_keep=3072, \
+--n_samples=50000, --bs=500
+```
+As before, `--dims_to_keep` needs to match schedule for `--network` option passed. First command will extract network outputs and residuals for given number of samples `--n_samples` 
+and across specified number of time pts and will save these as .npz files named `{data_name}_{schedule}_net_outputs_residuals_time{t}.npz`, one per each time point/lag. 
+
+Second command will load the files output by first command and will use these to calculate cross-correlations across different time pts/lags. Computed cross-correlatices of network outputs
+and residuals are saved to files named `{data-name}_{schedule}_autocorrelations_times0_{t}.npz`  for each time pt t. 
+Plots shown in Appendix C.1 were obtained by looking into network residual cross correlations (under `net_residuals_acs` key of output files).
+
+## Acknowledgments
+This implementation relies revily on the follwoing pre-existing repository:[https://github.com/NVlabs/edm](https://github.com/NVlabs/edm). We use similar data preprocessing, augmentation, architectures, and training to the above, safe for modifications needed to implement our proposed model and probability flow ODEs (pfODEs).
+
 
 ## License
 
-Copyright &copy; 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-All material, including source code and pre-trained models, is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-nc-sa/4.0/).
-
-`baseline-cifar10-32x32-uncond-vp.pkl` and `baseline-cifar10-32x32-uncond-ve.pkl` are derived from the [pre-trained models](https://github.com/yang-song/score_sde_pytorch) by Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. The models were originally shared under the [Apache 2.0 license](https://github.com/yang-song/score_sde_pytorch/blob/main/LICENSE).
-
-`baseline-imagenet-64x64-cond-adm.pkl` is derived from the [pre-trained model](https://github.com/openai/guided-diffusion) by Prafulla Dhariwal and Alex Nichol. The model was originally shared under the [MIT license](https://github.com/openai/guided-diffusion/blob/main/LICENSE).
-
-`imagenet-64x64-baseline.npz` is derived from the [precomputed reference statistics](https://github.com/openai/guided-diffusion/tree/main/evaluations) by Prafulla Dhariwal and Alex Nichol. The statistics were
-originally shared under the [MIT license](https://github.com/openai/guided-diffusion/blob/main/LICENSE).
-
-## Citation
-
-```
-@inproceedings{Karras2022edm,
-  author    = {Tero Karras and Miika Aittala and Timo Aila and Samuli Laine},
-  title     = {Elucidating the Design Space of Diffusion-Based Generative Models},
-  booktitle = {Proc. NeurIPS},
-  year      = {2022}
-}
-```
-
-## Development
-
-This is a research reference implementation and is treated as a one-time code drop. As such, we do not accept outside code contributions in the form of pull requests.
-
-## Acknowledgments
-
-We thank Jaakko Lehtinen, Ming-Yu Liu, Tuomas Kynk&auml;&auml;nniemi, Axel Sauer, Arash Vahdat, and Janne Hellsten for discussions and comments, and Tero Kuosmanen, Samuel Klenberg, and Janne Hellsten for maintaining our compute infrastructure.
