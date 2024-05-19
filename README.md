@@ -209,9 +209,16 @@ and residuals are saved to files named `{data-name}_{schedule}_autocorrelations_
 Plots shown in **Appendix C.1** were obtained by looking into network residual cross-correlations (under `net_residuals_acs` key of output files).
 
 ## Acknowledgments
-This implementation relies heavily on the following pre-existing repository:[https://github.com/NVlabs/edm](https://github.com/NVlabs/edm). We use similar data preprocessing, augmentation, architectures, and training to the above, safe for modifications needed to implement our proposed model and probability flow ODEs (pfODEs).
+
+This implementation relies heavily on the following pre-existing repository:[https://github.com/NVlabs/edm](https://github.com/NVlabs/edm), containing the official pytorch implementation of work 
+proposed in this paper: [Elucidating the Design Space of Diffusion-Based Generative Models, Karras et al., 2022](https://openreview.net/pdf?id=k7FuTOWMOc7). 
+Original repository/code is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-nc-sa/4.0/).
+
+Here we use similar data preprocessing, augmentation, architectures, and training to the above, safe for modifications needed to implement our proposed model and probability flow ODEs (pfODEs).
 
 
 ## License
+
+All code provided here is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-nc-sa/4.0/). 
 
 
