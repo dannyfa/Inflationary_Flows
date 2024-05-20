@@ -52,7 +52,7 @@ Code supports following options for toy datasets:
 4) 3D S Curve (`s_curve`)
 5) 3D Swirl (`swirl`)
 
-Note that `--data_dim` and `--dims_to_keep` arguments define schedule to be used - e.g., `data_dim==2` and `dims_to_keep==2` corresponds to PR-Preserving schedule for a 2D dataset. See **Table 2 on Appendix B.4.1** for details on training time (in Kimgs), 
+Note that `--data_dim` and `--dims_to_keep` arguments define schedule to be used - e.g., `data_dim==2` and `dims_to_keep==2` corresponds to PR-Preserving schedule for a 2D dataset. See **Table 2 on Appendix B.4.1** for details on training time (in Mimgs), 
 `--tmax` argument choice, and specific `--data_dim` and `--dims_to_keep` combinations used for each toy experiment. 
 
 Here,` s_curve` and `swirl` correspond to datasets scaled to unit variance across all dimensions. To use datasets scaled differently (as mentioned in **Appendix C.2.2**) pass instead `alt_s_curve` and `alt_swirl` in above command.
@@ -64,7 +64,7 @@ To train a model on a given image dataset:
 First, make sure you have downloaded and prepared the data using the `dataset_tool.py` script, as above. Then, run: 
 ```.bash
 torchrun --rdzv_endpoint=0.0.0.0:29501 train.py --outdir=out --data=datasets/cifar10-32x32.zip  \
---data_dim=3072 --dims_to_keep=3072 --rho=2 --batch=512  
+--data_dim=3072 --dims_to_keep=3072 --rho=2 --batch=512  --duration=275 
 ```
 Once again, `--data_dim` and `--dims_to_keep` define the specific schedule to be used. For instance, `data_dim==3072` and `dims_to_keep==3072` corresponds to PR-Preserving schedule for a 3x32x32 dataset. 
 
@@ -145,13 +145,13 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 calc_roundtrip_mse.py --save_dir=mse-tmp 
 --network=networks/network.pkl --data_name=cifar10 --bs=1000 --total_samples=10000 --seed=42 --dims_to_keep=3072
 ```
 
-Here, once again, schedule for `--network` and `--dims_to_keep` optios need to match. Total number of samples used for roundtrip experiment can be changed using `--total_samples` and `--bs` determines batch size to use when simulating rountrips. 
+Here, once again, schedule for `--network` and `--dims_to_keep` option need to match. Total number of samples used for roundtrip experiment can be changed using `--total_samples` and `--bs` determines batch size to use when simulating rountrips. 
 Finally, `--seed` determines seed to use when sampling from given target dataset at the beginning of melt/inflation.
 Script outputs a .json file containing all simulation parameters along with mse result (averaged across all samples and dimensions).
 
 ## Running Toy 2D alpha-shape or 3D mesh experiments
 
-To run alpha-shape or mesh toy coverage experiments, run: 
+To run alpha-shape or mesh toy coverage experiments, use: 
 
 ```.bash
 torchrun --rdzv_endpoint=0.0.0.0:29501 run_toy_alphashape_mesh_exps.py \
@@ -162,7 +162,7 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 run_toy_alphashape_mesh_exps.py \
 Here, options for `--network`, `--data_dim`, and `--dims_to_keep` need to match for a given schedule (e.g., PRP trained net for 2D circles, needs `data_dim==2` and `dims_to_keep==2`). 
 Same toy dataset options are supported here (see above) - toy data to use should be specified using `--data_name` option. This needs to match data network was trained on.
 
-Finally, `--steps` determines the number of linearly spaced ODE integration steps taken. This value can be obtained using the `tmax` values highlighted in **Table 2 of Appendix B.4.1** (e.g., for a step size of $10^{-2}$ (`--h=1e-2`), 
+Finally, `--steps` determines the number of linearly spaced ODE integration steps taken. This value can be obtained using the `tmax` values highlighted in **Table 2 of Appendix B.4.1** (e.g., for a step size of $1 \times 10^{-2}$ (`--h=1e-2`), 
 and `tmax=7.01`, we should use `--steps=701`). Script uses 20K test points and 200 boundary points per bounding sphere as defaults. 
 
 ## Computing Network Residual Cross-Correlations
