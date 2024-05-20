@@ -52,7 +52,8 @@ Code supports following options for toy datasets:
 4) 3D S Curve (`s_curve`)
 5) 3D Swirl (`swirl`)
 
-Note that `--data_dim` and `--dims_to_keep` arguments define schedule to be used - e.g., `data_dim==2` and `dims_to_keep==2` corresponds to PR-Preserving schedule for a 2D dataset. See **Table 2 on Appendix B.4.1** for details on training time (in Kimgs), `--tmax` argument choice, and specific `--data_dim` and `--dims_to_keep` combinations used for each toy experiment. 
+Note that `--data_dim` and `--dims_to_keep` arguments define schedule to be used - e.g., `data_dim==2` and `dims_to_keep==2` corresponds to PR-Preserving schedule for a 2D dataset. See **Table 2 on Appendix B.4.1** for details on training time (in Kimgs), 
+`--tmax` argument choice, and specific `--data_dim` and `--dims_to_keep` combinations used for each toy experiment. 
 
 Here,` s_curve` and `swirl` correspond to datasets scaled to unit variance across all dimensions. To use datasets scaled differently (as mentioned in **Appendix C.2.2**) pass instead `alt_s_curve` and `alt_swirl` in above command.
 
@@ -86,7 +87,7 @@ Simulation here entails inflation and roundtrip (from end of inflation), plus ge
 All 3 simulations are saved separately to .npz files under `--save_dir`. Output files are named `{data_name}_{schedule}_net_{sim_type}_results.npz`, where `data_name` is the same as in argument passed, `schedule` corresponds to choice between `PRP` or `PRRto{x}D` (e.g., `PRRto1D`) and `sim_type` can be either `melt` (i.e., inflation), `rountrip`, or `gen`. 
 Additionally, we also save a file named `{data_name}_{schedule}_net_sim_params.json`, which contains all parameters used in simulations. Options for `--data_name` are the same as mentioned above. 
 
-Of note, network pickle file passed (`--network`) schedule needs to match `--data_dim` and `--dims_to_keep` given.
+Of note, schedule for network pickle file passed (`--network`) needs to match `--data_dim` and `--dims_to_keep` given. That is, if network was trained on a PRP schedule for a 2D dataset, then we need `data_dim==2` and `dims_to_keep==2`.
 
 To run PR-Reducing (PRR) simulations, pass option `--eps=xx` using values listed in **Table 3 of Appendix B.4.1** for the different datasets. These correspond to latent space compressed dimension variances, used to construct diagonal covariance from which latent samples are obtained prior to running generation.
 
@@ -108,13 +109,14 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 pfODE_int.py --save_dir=out \
 --data_root=datasets/cifar10-32x32.zip --network=networks/network.pkl \
 --data_name=cifar10 --bs=256 --dims_to_keep=3072
 ```
-By default, this will run inflation, roundtrip (from inflation), and generation for a batch of data of specified  size (i.e., `--bs`). However, one can also run these simulations separately by passing instead `--sim_type={sim_name}` where `sim_name` can be either `melt` (i.e., inflation), `roundtrip`, or `gen`. If running roundtrip, script expects a previous inflation to start from - this should be passed using `--prev_melt=/exps/cifar10_PRP_melt.npz`. 
+By default, this will run inflation, roundtrip (from end of inflation), and generation for a batch of data of specified  size (i.e., `--bs`). However, one can also run these simulations separately by passing instead `--sim_type={sim_name}` where `sim_name` can be either `melt` (i.e., inflation), `roundtrip`, or `gen`. If running roundtrip, script expects a previous inflation to start from - this should be passed using `--prev_melt=/exps/{my_previous_inflation}.npz`. 
 
 As in toy case, simulations are saved to separate .npz files and all parameters used are logged to `{data_name}_{schedule}_HD_pfODE_int_sim_params.json`.
 
-To run PR-Reducing simulations pass `--eps==xx`, using values shown in **Table 7 Of Appendix B.5**. These values represent latent space variance for compressed dimensions and are used to construct diagonal covariance from which we obtain initial Gaussian samples for generation.
+To run PR-Reducing (PRR) simulations pass `--eps==xx`, using values shown in **Table 7 Of Appendix B.5**. These values represent latent space variance for compressed dimensions and are used to construct diagonal covariance from which we obtain initial Gaussian samples for generation.
 
-Of note, network pickle file passed (`--network`) schedule needs to match `--dims_to_keep` given.
+Of note, schedule for network pickle file passed (`--network`) needs to match `--dims_to_keep` given. For instance, if network was trained to run PR-Reducing (PRR) schedule, compressing to 62D dimensions, 
+then we need `dims_to_keep==62`. 
 
 ## Computing FID scores 
 
@@ -128,11 +130,11 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 fid.py calc --images=fid-tmp \
 --ref=fid-refs/cifar10-32x32.npz
 ```
 
-The first command will generate several samples (same as number of seeds specified using `--seeds`) and will save these to a specified directory, with every 1000 new images saved under a separate subdirectory.
+The first command will generate several samples (same as number of seeds specified using `--seeds`) and will save these to the specified directory `--save_dir`, with every 1K new images saved under a separate subdirectory.
 Note that schedule network was trained on needs to match `--dims_to_keep` option given (e.g., PRP network needs `dims_to_keep=3072` for 3x32x32 data). 
 If running generation for PR-Reducing schedules, adjust `--dims_to_keep` and `--network` options appropriately, and pass `--eps=xx` using values listed on **Table 7 of Appendix B.5**. 
 
-Second command computes actual fid score for the previously generated images and uses reference file created during dataset preparation (see above).
+Second command computes actual fid score for the previously generated images and uses reference file created during dataset preparation (see sections above).
 
 ## Computing Roundtrip MSE 
 
@@ -143,7 +145,8 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 calc_roundtrip_mse.py --save_dir=mse-tmp 
 --network=networks/network.pkl --data_name=cifar10 --bs=1000 --total_samples=10000 --seed=42 --dims_to_keep=3072
 ```
 
-Here, once again, schedule for `--network` and `--dims_to_keep` optios need to match. Total number of samples used for roundtrip experiment can be changed using `--total_samples` and `--bs` determines batch size to use when simulating rountrips. Finally, `--seed` determines seed to use when sampling from given target dataset at the beginning of melt/inflation.
+Here, once again, schedule for `--network` and `--dims_to_keep` optios need to match. Total number of samples used for roundtrip experiment can be changed using `--total_samples` and `--bs` determines batch size to use when simulating rountrips. 
+Finally, `--seed` determines seed to use when sampling from given target dataset at the beginning of melt/inflation.
 Script outputs a .json file containing all simulation parameters along with mse result (averaged across all samples and dimensions).
 
 ## Running Toy 2D alpha-shape or 3D mesh experiments
@@ -157,7 +160,7 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 run_toy_alphashape_mesh_exps.py \
 ```
 
 Here, options for `--network`, `--data_dim`, and `--dims_to_keep` need to match for a given schedule (e.g., PRP trained net for 2D circles, needs `data_dim==2` and `dims_to_keep==2`). 
-Same toy dataset options are supported here (see above) - specific toy data to use should be specified using `--data_name` option. This needs to match data network was trained on.
+Same toy dataset options are supported here (see above) - toy data to use should be specified using `--data_name` option. This needs to match data network was trained on.
 
 Finally, `--steps` determines the number of linearly spaced ODE integration steps taken. This value can be obtained using the `tmax` values highlighted in **Table 2 of Appendix B.4.1** (e.g., for a step size of $10^{-2}$ (`--h=1e-2`), 
 and `tmax=7.01`, we should use `--steps=701`). Script uses 20K test points and 200 boundary points per bounding sphere as defaults. 
@@ -177,7 +180,7 @@ python calc_net_residuals_autocorrelations.py calctoys --save_dir=toy_net_acs-tm
 --res_root=toy_net_outputs-tmp/circles_PRP_toy_net_outputs_residuals.npz --data_name=circles \
 --n_time_pts=701 --data_dim=2 --dims_to_keep=2 --n_samples=10000
 ```
-First command extracts network outputs and residuals for a given number of time pts and step size (same as used in ODE integration/discretization schedule). 
+First command extracts network outputs and residuals for a given number of time pts and step size (same as used in pfODE discretization schedule). 
 Once again, options for `--network`, `--data_dim`, and `--dims_to_keep` need to match for a given schedule (e.g., PRP trained net for 2D circles, needs `data_dim==2` and `dims_to_keep==2`). 
 
 Same toy dataset options are supported here (see above) - toy data to use should be specified using `--data_name` option. This needs to match data network was trained on.
@@ -188,7 +191,7 @@ Second command loads .npz file output from first command and uses its values to 
 `--data_dim`, `--dims_to_keep`, `--n_time_pts`, and `--n_samples` should match values passed to first command. 
 
 Computed cross-correlation matrices for network outputs and residuals are saved to a file named `{data_name}_{schedule}_toy_autocorrelations.npz`. 
-Plots shown in **Appendix C.1** were obtained by looking into network residual cross-correlations (under `net_residuals_acs` key of output file).
+Plots shown in **Appendix C.3** were obtained by looking into network residual cross-correlations (under `net_residual_acs` key of output file).
 
 **Image Networks**
 
@@ -208,11 +211,11 @@ and across specified number of time pts and will save these as .npz files named 
 
 Second command will load the files output by first command and will use these to calculate cross-correlations across different time pts/lags. Computed cross-correlatices of network outputs
 and residuals are saved to files named `{data-name}_{schedule}_autocorrelations_times0_{t}.npz`  for each time pt t. 
-Plots shown in **Appendix C.1** were obtained by looking into network residual cross-correlations (under `net_residuals_acs` key of output files).
+Plots shown in **Appendix C.3** were obtained by looking into network residual cross-correlations (under `net_residual_acs` key of output files).
 
 ## Acknowledgments
 
-This implementation relies heavily on the following pre-existing repository:[https://github.com/NVlabs/edm](https://github.com/NVlabs/edm), containing the official pytorch implementation of work 
+This implementation is based on the following pre-existing repository:[https://github.com/NVlabs/edm](https://github.com/NVlabs/edm), containing the official pytorch implementation of work 
 proposed in this paper: [Elucidating the Design Space of Diffusion-Based Generative Models, Karras et al., 2022](https://openreview.net/pdf?id=k7FuTOWMOc7). 
 Original repository/code is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-nc-sa/4.0/).
 
