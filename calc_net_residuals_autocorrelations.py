@@ -2,11 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 
-Script to compute Autocorrelations for 
-network outputs and network residuals 
-for nets trained on HD datasets. 
+Computes cross-correlations for 
+network outputs and network residuals. 
 
-For now, this includes only our de novo nets.
+These are used to construct Figures in Appendix C.1 
 
 """
 
@@ -26,8 +25,9 @@ from torch_utils import distributed as dist
 def calc_autocorr(X1, mu1, X2, mu2, device):
     """
     Computes(X1-mu1)@(X2-mu)^\top for a given batch.
+    
     We then accumulate these results over batch elements
-    and batches before taking expectation and applying scales.
+    and batches before taking expectation and applying scaling.
     """
     #pass arrays to torch 
     X1 = torch.from_numpy(X1).type(torch.float32).to(device)
@@ -55,6 +55,7 @@ def calc_autocorr(X1, mu1, X2, mu2, device):
 @click.group()
 def main():
     """
+    
     Calculate Scaled Cross-Correlation Matrices for De-Noiser Network Outputs
     and Residuals 
     
@@ -64,6 +65,10 @@ def main():
         given set of desired time pts; 
         2) use extracted values from (1) to compute scaled 
         cross-correlation matrices and save these. 
+        
+    
+    We include separate extract and calc methods for toy and image datasets/networks. 
+    
     """
 #-------------------------------------------------------------------------#
 
@@ -89,6 +94,20 @@ def main():
     
 
 def extract(save_dir, data_root, network_pkl, **kwargs):
+    
+    """
+    Extracts denoiser network outputs and residuals
+    for a large number of samples for image datasets. 
+    
+    Outputs can then be passed on to calc to compute
+    desired cross-correlations. 
+    
+    Example: 
+        \b torchrun --rdzv_endpoint=0.0.0.0:29501 calc_net_residuals_autocorrelations.py extract --save_dir=net_outputs-tmp \
+        --data_root=datasets/cifar10-32x32.zip --network=networks/network.pkl --data_name=cifar10 \
+        --n_samples=50000 --bs=1000 --dims_to_keep=3072 --n_time_pts=256
+        
+    """
 
     #-------------------------------------------------#
     #General SetUp
@@ -238,6 +257,13 @@ def extracttoys(save_dir, data_name, network_pkl, **kwargs):
     samples at once (i.e., no batch computation)
     
     Only uses linearly spaced discretization schedule. 
+    
+    
+    Example: 
+        \b torchrun --rdzv_endpoint=0.0.0.0:29501 calc_net_residuals_autocorrelations.py extracttoys --save_dir=toy_net_outputs-tmp \
+        --data_name=circles --network=networks/network.pkl --n_time_pts=701 --h=1e-2 --n_samples=10000 \
+        --data_dim=2 --dims_to_keep=2
+    
     """
     
     #get all other args and pass it to general opts dict
@@ -330,7 +356,7 @@ def extracttoys(save_dir, data_name, network_pkl, **kwargs):
 @main.command()
 @click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                            type=str, required=True)
 @click.option('--res_root',                help='Path to residuals extracted', metavar='DIR',                                                                 type=str, required=True)
-@click.option('--data_name',               help='Name of dataset we wish to use', metavar='STR',                                                              type=str, default='CIFAR10', show_default=True)
+@click.option('--data_name',               help='Name of dataset we wish to use', metavar='STR',                                                              type=str, default='cifar10', show_default=True)
 
 @click.option('--n_time_pts',              help='N for time discretization schedule', metavar='INT',                                                          type=click.IntRange(min=1), default=256, show_default=True)
 
@@ -339,11 +365,21 @@ def extracttoys(save_dir, data_name, network_pkl, **kwargs):
 @click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                       type=click.IntRange(min=1), default=3072, show_default=True)
 @click.option('--n_samples',               help='Total number of samples to compute AC over', metavar='INT',                                                  type=int, default=50000, show_default=True)
 
-@click.option('--bs',                      help='Maximum batch size', metavar='INT',                                                                          type=click.IntRange(min=1), default=1000, show_default=True)
+@click.option('--bs',                      help='Maximum batch size', metavar='INT',                                                                          type=click.IntRange(min=1), default=500, show_default=True)
 @click.option('--device_name',             help='Name of device we wish to run simulation on.', metavar='STR',                                                type=str, default='cuda', show_default=True)
 
 
 def calc(save_dir, res_root, **kwargs):
+    """
+    Computes cross-correlations (scaled)
+    for network outputs and residuals extracted using
+    extract method. 
+    
+    Example: 
+        \b torchrun --rdzv_endpoint=0.0.0.0:29501 calc_net_residuals_autocorrelations.py calc --save_dir=net_acs-tmp \
+         --res_root=net_outputs-tmp --data_name=cifar10 --n_time_pts=256 --dims_to_keep=3072 \
+         --n_samples=50000 --bs=500
+    """
 
     #get all other args and pass it to general opts dict
     opts = dnnlib.util.EasyDict(kwargs)
@@ -444,10 +480,10 @@ def calc(save_dir, res_root, **kwargs):
 #---------------------------------------------------------------------#
 @main.command()
 @click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                            type=str, required=True)
-@click.option('--res_root',                help='(Full) Path to residuals extracted', metavar='DIR',                                                          type=str, required=True)
-@click.option('--data_name',               help='Name of toy dataset we wish to use', metavar='STR',                                                          type=str, default='CIFAR10', show_default=True)
+@click.option('--res_root',                help='(Full) Path to residuals extracted (.npz file)', metavar='STR',                                              type=str, required=True)
+@click.option('--data_name',               help='Name of toy dataset we wish to use.', metavar='STR',                                                         type=str, default='circles', show_default=True)
 
-@click.option('--n_time_pts',              help='N for time discretization schedule', metavar='INT',                                                          type=click.IntRange(min=1), default=256, show_default=True)
+@click.option('--n_time_pts',              help='N for time discretization schedule', metavar='INT',                                                          type=click.IntRange(min=1), default=701, show_default=True)
 
 @click.option('--data_dim',                help='Dimensionality of toy dataset.', metavar='INT',                                                              type=int, default=2, show_default=True)
 @click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                       type=click.IntRange(min=1), default=2, show_default=True)
@@ -458,7 +494,18 @@ def calc(save_dir, res_root, **kwargs):
 
 def calctoys(save_dir, res_root, **kwargs):
     """
-    Similar to calc method, only for toy data.
+    Similar to calc, but adapted to toy datasets/networks.
+    
+    Computes (scaled) cross-correlations for all "N" total 
+    samples at once per each time pt/lag (i.e., no batch computation)
+    
+    Only uses linearly spaced discretization schedule. 
+    
+    Example: 
+        \b python calc_net_residuals_autocorrelations.py calctoys --save_dir=toy_net_acs-tmp \
+        --res_root=toy_net_outputs-tmp/circles_PRP_toy_net_outputs_residuals.npz --data_name=circles \
+        --n_time_pts=701 --data_dim=2 --dims_to_keep=2 --n_samples=10000
+    
     """
     
     #get all other args and pass it to general opts dict

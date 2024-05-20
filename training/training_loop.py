@@ -5,7 +5,12 @@
 # You should have received a copy of the license along with this
 # work. If not, see http://creativecommons.org/licenses/by-nc-sa/4.0/
 
-"""Main training loop."""
+"""
+Main training loop.
+Supports training using either original EDM pre-conditioning 
+and loss or inflationary flows proposed pre-conditioning
+and loss.
+"""
 
 import os
 import time

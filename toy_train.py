@@ -8,11 +8,11 @@ Script allows either ToyConvUNet and ToySongUNet as arch options ->
 all paper toy exps used ToyConvUNet. 
 
 Script also allows 3 different pre-conditioning schemes: 
-    1) inflationary flows (ifs) --> used in all toy experiments in paper
+    1) inflationary flows (ifs) --> used in all toy experiments in paper.
     2) edm --> toy implementation in image space (IS) of original EDM precond. 
-    NOT used for any paper exps --> left for sanity check (if desired)
+    NOT used for any paper exps --> left for sanity check (if desired).
     3) edm_es --> toy implementation in eigen space (ES) of original EDM precond. 
-    NOT used for any paper exps --> left for sanity check (if desired)
+    NOT used for any paper exps --> left for sanity check (if desired).
     
 """
 
@@ -49,47 +49,46 @@ def parse_int_list(s):
 @click.command()
 
 # Main options.
-@click.option('--outdir',        help='Where to save the results', metavar='DIR',                               type=str, required=True)
-@click.option('--data_name',     help='Name of toy dset to use', metavar='STR',                                 type=str, required=True)
-@click.option('--data_dim',      help='Dimensionality of toy data.', metavar='INT',                             type=int, required=True)
-@click.option('--augment_to',    help='Dimension we should augment our original toy dset to.', metavar='INT',   type=int, default=0, show_default=True)
-@click.option('--img_res',       help='Dimensionality UpSampled data fed to ConvNets.', metavar='INT',          type=int, default=8, show_default=True)
-@click.option('--dims_to_keep',  help='Number of dimensions to keep', metavar='INT',                            type=int, required=True)
-@click.option('--gamma0',        help='Initial melting kernel width', metavar='FLOAT',                          type=click.FloatRange(min=5e-4, min_open=False), default=5e-4, show_default=True)
-@click.option('--rho',           help='Exponent constant factor.', metavar='FLOAT',                             type=click.FloatRange(min=1.0, min_open=False), default=1.0, show_default=True)
-@click.option('--tmin',          help='Smallest melt time/sigma to consider', metavar='FLOAT',                  type=click.FloatRange(min=1e-7, min_open=False), default=1e-7, show_default=True)
-@click.option('--tmax',          help='Largest melt time/sigma to consider', metavar='FLOAT',                   type=click.FloatRange(min=1.0, min_open=False), default=15.01, show_default=True)
-@click.option('--arch',          help='Network architecture to use.', metavar='ToyConvUNet|ToySongUNet',        type=click.Choice(['ToyConvUNet', 'ToySongUNet']), default='ToyConvUNet', show_default=True)
-@click.option('--space',         help='Space Net should be trained on', metavar='ES|IS',                        type=click.Choice(['ES', 'IS']), default='ES', show_default=True)
-@click.option('--precond',       help='PreConditioning to use for Net Training', metavar='ifs|edm|edm_es',      type=click.Choice(['ifs', 'edm', 'edm_es']), default='ifs', show_default=True)
-@click.option('--g_rescaling',   help='Global re-scaling factor for g tensor.', metavar='FLOAT',                type=float, default=1., show_default=True)
+@click.option('--outdir',        help='Where to save the results', metavar='DIR',                                                                type=str, required=True)
+@click.option('--data_name',     help='Name of toy dset to use', metavar='STR',                                                                  type=str, required=True)
+@click.option('--data_dim',      help='Dimensionality of toy data.', metavar='INT',                                                              type=int, required=True)
+@click.option('--augment_to',    help='Dimension we should augment our original toy dset to. Defaults to 0 (no augmentation)', metavar='INT',    type=int, default=0, show_default=True)
+@click.option('--img_res',       help='Dimensionality UpSampled data fed to Convolutional Layers of ToySongUNet.', metavar='INT',                type=int, default=8, show_default=True)
+@click.option('--dims_to_keep',  help='Number of dimensions to keep', metavar='INT',                                                             type=int, required=True)
+@click.option('--gamma0',        help='Initial melting kernel width', metavar='FLOAT',                                                           type=click.FloatRange(min=5e-4, min_open=False), default=5e-4, show_default=True)
+@click.option('--rho',           help='Constant for exponential growth/inflation.', metavar='FLOAT',                                             type=click.FloatRange(min=1.0, min_open=False), default=1.0, show_default=True)
+@click.option('--tmin',          help='Smallest melt time/sigma to sample.', metavar='FLOAT',                                                    type=click.FloatRange(min=1e-7, min_open=False), default=1e-7, show_default=True)
+@click.option('--tmax',          help='Largest melt time/sigma to sample', metavar='FLOAT',                                                      type=click.FloatRange(min=1.0, min_open=False), default=15.01, show_default=True)
+@click.option('--arch',          help='Network architecture to use.', metavar='ToyConvUNet|ToySongUNet',                                         type=click.Choice(['ToyConvUNet', 'ToySongUNet']), default='ToyConvUNet', show_default=True)
+@click.option('--space',         help='Space Net should be trained on. Defaults to eigen-space (ES)', metavar='ES|IS',                           type=click.Choice(['ES', 'IS']), default='ES', show_default=True)
+@click.option('--precond',       help='PreConditioning to use for Net Training. Defaults to inflationary flows (ifs)', metavar='ifs|edm|edm_es', type=click.Choice(['ifs', 'edm', 'edm_es']), default='ifs', show_default=True)
+@click.option('--g_rescaling',   help='Global re-scaling factor for g tensor.Defaults to NO re-scasling (1)', metavar='FLOAT',                   type=float, default=1., show_default=True)
 
 # Hyperparameters.
-@click.option('--duration',      help='Training duration', metavar='MIMG',                                      type=click.FloatRange(min=0, min_open=True), default=200, show_default=True)
-@click.option('--batch',         help='Total batch size', metavar='INT',                                        type=click.IntRange(min=1), default=512, show_default=True)
-@click.option('--batch-gpu',     help='Limit batch size per GPU', metavar='INT',                                type=click.IntRange(min=1))
-@click.option('--cres',          help='Channels per resolution  [default: varies]', metavar='LIST',             type=parse_int_list)
-@click.option('--lr',            help='Learning rate', metavar='FLOAT',                                         type=click.FloatRange(min=0, min_open=True), default=10e-4, show_default=True)
-@click.option('--ema',           help='EMA half-life', metavar='MIMG',                                          type=click.FloatRange(min=0), default=0.5, show_default=True)
+@click.option('--duration',      help='Training duration', metavar='MIMG',                                                                       type=click.FloatRange(min=0, min_open=True), default=7000, show_default=True)
+@click.option('--batch',         help='Total batch size', metavar='INT',                                                                         type=click.IntRange(min=1), default=8192, show_default=True)
+@click.option('--batch-gpu',     help='Limit batch size per GPU', metavar='INT',                                                                 type=click.IntRange(min=1), default=1024, show_default=True)
+@click.option('--cres',          help='Channels per resolution  [default: varies]', metavar='LIST',                                              type=parse_int_list)
+@click.option('--lr',            help='Learning rate', metavar='FLOAT',                                                                          type=click.FloatRange(min=0, min_open=True), default=1e-5, show_default=True)
+@click.option('--ema',           help='EMA half-life', metavar='MIMG',                                                                           type=click.FloatRange(min=0), default=0.5, show_default=True)
 
 # Performance-related.
-@click.option('--ls',            help='Loss scaling', metavar='FLOAT',                                         type=click.FloatRange(min=0, min_open=True), default=1, show_default=True)
-@click.option('--bench',         help='Enable cuDNN benchmarking', metavar='BOOL',                             type=bool, default=True, show_default=True)
+@click.option('--ls',            help='Loss scaling', metavar='FLOAT',                                                                           type=click.FloatRange(min=0, min_open=True), default=1, show_default=True)
+@click.option('--bench',         help='Enable cuDNN benchmarking', metavar='BOOL',                                                               type=bool, default=True, show_default=True)
 
 # I/O-related.
-@click.option('--desc',          help='String to include in result dir name', metavar='STR',                   type=str)
-@click.option('--nosubdir',      help='Do not create a subdirectory for results',                              is_flag=True)
-@click.option('--tick',          help='How often to print progress', metavar='KIMG',                           type=click.IntRange(min=1), default=50, show_default=True)
-@click.option('--snap',          help='How often to save snapshots', metavar='TICKS',                          type=click.IntRange(min=1), default=50, show_default=True)
-@click.option('--dump',          help='How often to dump state', metavar='TICKS',                              type=click.IntRange(min=1), default=500, show_default=True)
-@click.option('--seed',          help='Random seed  [default: random]', metavar='INT',                         type=int)
-@click.option('--resume',        help='Resume from previous training state', metavar='PT',                     type=str)
-@click.option('-n', '--dry-run', help='Print training options and exit',                                       is_flag=True)
+@click.option('--desc',          help='String to include in result dir name', metavar='STR',                                                     type=str)
+@click.option('--nosubdir',      help='Do not create a subdirectory for results',                                                                is_flag=True)
+@click.option('--tick',          help='How often to print progress', metavar='KIMG',                                                             type=click.IntRange(min=1), default=50, show_default=True)
+@click.option('--snap',          help='How often to save snapshots', metavar='TICKS',                                                            type=click.IntRange(min=1), default=250, show_default=True)
+@click.option('--dump',          help='How often to dump state', metavar='TICKS',                                                                type=click.IntRange(min=1), default=250, show_default=True)
+@click.option('--seed',          help='Random seed  [default: random]', metavar='INT',                                                           type=int)
+@click.option('--resume',        help='Resume from previous training state', metavar='PT',                                                       type=str)
+@click.option('-n', '--dry-run', help='Print training options and exit',                                                                         is_flag=True)
 
 def main(**kwargs):
     """
-    Similar to train.py, only simpler 
-    and for toy datasets... 
+    Similar to train.py, only for toy datasets.
     """
     opts = dnnlib.EasyDict(kwargs)
     torch.multiprocessing.set_start_method('spawn')

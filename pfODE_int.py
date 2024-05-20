@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Script to run melt, roundtrip, and generation 
-for a batch of HD data (CF-10 for now).
 
-Essentially this calls methods in ifs_ode_sim 
-modules to run melt and generation
+Simulates PRP and PRR pfODEs for a batch of samples 
+for image datasets. 
+
+Runs inflation (i.e., melt), roundtrip (from end of inflation), 
+and generation.
 
 """
 
@@ -24,34 +25,52 @@ from pfODE_sim.ODE import sim_batch_net_ODE
 
 #-------------------------------------------------------------------------
 @click.command()
-@click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                            type=str, required=True)
-@click.option('--data_root',               help='Path to the dataset', metavar='ZIP|DIR',                                                                     type=str, required=True)
-@click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                                                                type=str, required=True)
-@click.option('--data_name',               help='Name of dataset we wish to run GT sims on', metavar='STR',                                                   type=str, default='CIFAR10', show_default=True)
-@click.option('--sim_type',                help='Sim type to run', metavar='melt|roundtrip|gen|all',                                                          type=click.Choice(['melt', 'roundtrip', 'gen', 'all']), default='all', show_default=True)
-@click.option('--disc',                    help='Discretization to use when simulating ODE', metavar='ifs|vp_ode',                                            type=click.Choice(['ifs', 'vp_ode']), default='vp_ode', show_default=True)
-@click.option('--vpode_disc_eps',          help='Epsilon_s param for vp_ode discretization (if using this option).', metavar='FLOAT',                         type=float, default=1e-2, show_default=True)
-@click.option('--solver',                  help='Solver to use when simulating ODE', metavar='euler|heun',                                                    type=click.Choice(['euler', 'heun']), default='heun', show_default=True)
-@click.option('--bs',                      help='Maximum batch size', metavar='INT',                                                                          type=click.IntRange(min=1), default=256, show_default=True)
-@click.option('--seed',                    help='Seed for constructing gen samples', metavar='INT',                                                           type=int, default=42, show_default=True)
+@click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                                                     type=str, required=True)
+@click.option('--data_root',               help='Path to the dataset', metavar='ZIP|DIR',                                                                                              type=str, required=True)
+@click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                                                                                         type=str, required=True)
+@click.option('--data_name',               help='Name of dataset we wish to run simulations for.', metavar='STR',                                                                      type=str, default='cifar10', show_default=True)
+@click.option('--sim_type',                help='Simulation type to run', metavar='melt|roundtrip|gen|all',                                                                            type=click.Choice(['melt', 'roundtrip', 'gen', 'all']), default='all', show_default=True)
+@click.option('--disc',                    help='Discretization to use when simulating ODE', metavar='ifs|vp_ode',                                                                     type=click.Choice(['ifs', 'vp_ode']), default='vp_ode', show_default=True)
+@click.option('--vpode_disc_eps',          help='Epsilon_s param for vp_ode discretization (if using this option).', metavar='FLOAT',                                                  type=float, default=1e-2, show_default=True)
+@click.option('--solver',                  help='Solver to use when simulating pfODE', metavar='euler|heun',                                                                           type=click.Choice(['euler', 'heun']), default='heun', show_default=True)
+@click.option('--bs',                      help='Batch size to use.', metavar='INT',                                                                                                   type=click.IntRange(min=1), default=256, show_default=True)
+@click.option('--seed',                    help='Seed for constructing intitial samples (for generation)', metavar='INT',                                                              type=int, default=42, show_default=True)
 
 
-@click.option('--n_iters',                 help='Number of sampling steps', metavar='INT',                                                                    type=click.IntRange(min=1), default=256, show_default=True)
-@click.option('--end_time',                help='End melt/start gen time for ODE integration', metavar='FLOAT',                                               type=float, default=15.01, show_default=True)
-@click.option('--end_vars',                help='Ending vars per dim', metavar='FLOAT',                                                                       type=float, default=1., show_default=True)
-@click.option('--save_freq',               help='How often to save ODE sim steps', metavar='INT',                                                             type=click.IntRange(min=1), default=10, show_default=True)
-@click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                       type=click.IntRange(min=1), default=3072, show_default=True)
-@click.option('--device_name',             help='Name of device we wish to run simulation on.', metavar='STR',                                                type=str, default='cuda', show_default=True)
-@click.option('--img_size',                help='Size of imgs being processed.', metavar='INT',                                                               type=int, default=32, show_default=True)
-@click.option('--img_ch',                  help='Number of channels in imgs being processed.', metavar='INT',                                                 type=int, default=3, show_default=True)
-@click.option('--eps',                     help='Variance to be used when sampling compressed dims during PRR gen.', metavar='FLOAT',                         type=float, default=1., show_default=True)
-@click.option('--prev_melt',               help='Path to previous melt results to be used for rdtrp or gen (with empirical covariance', metavar='STR',        type=str, default='', show_default=True)
-@click.option('--gen_source',              help='Method used to construct gen samples', metavar='diag|empirical',                                             type=click.Choice(['diag', 'empirical']), default='diag', show_default=True)
+@click.option('--n_iters',                 help='Number of intergration steps', metavar='INT',                                                                                         type=click.IntRange(min=1), default=256, show_default=True)
+@click.option('--end_time',                help='End inflation/start gen time for ODE integration', metavar='FLOAT',                                                                   type=float, default=15.01, show_default=True)
+@click.option('--end_vars',                help='Ending vars per dim for scaling (A0)', metavar='FLOAT',                                                                               type=float, default=1., show_default=True)
+@click.option('--save_freq',               help='How often to save ODE sim step updates', metavar='INT',                                                                               type=click.IntRange(min=1), default=10, show_default=True)
+@click.option('--dims_to_keep',            help='Number of original data dimensions to keep.', metavar='INT',                                                                          type=click.IntRange(min=1), default=3072, show_default=True)
+@click.option('--device_name',             help='Name of device we wish to run simulation on.', metavar='STR',                                                                         type=str, default='cuda', show_default=True)
+@click.option('--img_size',                help='Size of imgs being processed.', metavar='INT',                                                                                        type=int, default=32, show_default=True)
+@click.option('--img_ch',                  help='Number of channels in imgs being processed.', metavar='INT',                                                                          type=int, default=3, show_default=True)
+@click.option('--eps',                     help='Latent space compressed dimensions variance (for PRR gen)', metavar='FLOAT',                                                          type=float, default=1., show_default=True)
+@click.option('--prev_melt',               help='Path to previous melt/inflation results to be used for rdtrp or gen (with empirical covariance)', metavar='STR',                      type=str, default='', show_default=True)
+@click.option('--gen_source',              help='Method used to construct covariance used to obtain initial samples for generation. Defaults to diag.', metavar='diag|empirical',      type=click.Choice(['diag', 'empirical']), default='diag', show_default=True)
 
 
 #-------------------------------------------------------------------------
 
 def main(save_dir, data_root, network_pkl, **kwargs): 
+    """
+    
+    Simulates either inflation (aka melt), roundtrip, or
+    generation (or all of these) for image datasets 
+    using trained network score estimtes. 
+    
+    Of note, for generation, covariance used to construct 
+    initial samples can be either: 
+        
+        1) Diagonal, with entries corresponding to preserved dimensions being 1
+        and entries corresponding to compressed dimesions being equal to the same 
+        small value (--eps)
+        2) Empirical, this covariance is estimated from a previous inflation simulation
+        (i.e., using final step/time point of inflation). 
+        
+    Default is to use diagonal covariance. 
+
+    """
     
     #-------------------------------------------------#
     #General SetUp

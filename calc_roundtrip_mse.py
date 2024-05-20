@@ -2,11 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 
-Short script to compute Roundtrip MSE
-for a given randomly sampled set of imgs. 
-
-We will use this to compute roundtrip MSE values across
-different Inflationary Flows schedules/compression levels.
+Computes Roundtrip MSE for a given randomly sampled set of imgs. 
 
 """
 
@@ -27,12 +23,12 @@ from pfODE_sim.ODE import sim_batch_net_ODE
 @click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                            type=str, required=True)
 @click.option('--data_root',               help='Path to the dataset', metavar='ZIP|DIR',                                                                     type=str, required=True)
 @click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                                                                type=str, required=True)
-@click.option('--data_name',               help='Name of dataset we wish to run sim on', metavar='STR',                                                       type=str, default='CIFAR10', show_default=True)
+@click.option('--data_name',               help='Name of dataset we wish to calc rdtrp mse for', metavar='STR',                                               type=str, default='cifar10', show_default=True)
 @click.option('--disc',                    help='Discretization to use when simulating ODE', metavar='ifs|vp_ode',                                            type=click.Choice(['ifs', 'vp_ode']), default='vp_ode', show_default=True)
 @click.option('--vpode_disc_eps',          help='Epsilon_s param for vp_ode discretization (if using this option).', metavar='FLOAT',                         type=float, default=1e-2, show_default=True)
 @click.option('--solver',                  help='Solver to use when simulating ODE', metavar='euler|heun',                                                    type=click.Choice(['euler', 'heun']), default='heun', show_default=True)
 @click.option('--bs',                      help='Batch size', metavar='INT',                                                                                  type=click.IntRange(min=1), default=500, show_default=True)
-@click.option('--total_samples',           help='Total number of samples we wish to take and compute rdtrp MSE over', metavar='INT',                          type=click.IntRange(min=1), default=10000, show_default=True)
+@click.option('--total_samples',           help='Total number of samples we wish to compute rdtrp MSE over', metavar='INT',                                   type=click.IntRange(min=1), default=10000, show_default=True)
 @click.option('--seed',                    help='Seed for sampling/shuffling initial imgs.', metavar='INT',                                                   type=int, default=42, show_default=True)
 
 
@@ -47,6 +43,21 @@ from pfODE_sim.ODE import sim_batch_net_ODE
 #-------------------------------------------------------------------------
 
 def main(save_dir, data_root, network_pkl, **kwargs): 
+    
+    """
+    
+    Simulates rdtrp and computes MSE between original images
+    and recovered images at end of rdtrp for a given network 
+    and schedule. 
+    
+    
+    Example: 
+        \b torchrun --rdzv_endpoint=0.0.0.0:29501 calc_roundtrip_mse.py \
+        --save_dir=mse-tmp --data_root=datasets/cifar10-32x32.zip \
+        --network=networks/network.pkl --data_name=cifar10 --bs=1000 \
+        --total_samples=10000 --seed=42 --dims_to_keep=3072
+        
+    """
         
     #get all other args and pass it to general opts dict
     opts = dnnlib.util.EasyDict(kwargs)

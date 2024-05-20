@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Script to run generation only for large number of samples. 
+
+Generates large numbers of samples for a given network, schedule.
 
 This will be used when calculating FID scores for the different models.
 
-This follows mostly same layout as Karras' original gemerate.py BUT 
-using IFs ODE sim methods. 
 
 """
 
@@ -62,26 +61,26 @@ def parse_int_list(s):
 
 #----------------------------------------------------------------------------# 
 @click.command()
-@click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                            type=str, required=True)
-@click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                                                                type=str, required=True)
-@click.option('--disc',                    help='Discretization to use when simulating ODE', metavar='ifs|vp_ode',                                            type=click.Choice(['ifs', 'vp_ode']), default='vp_ode', show_default=True)
-@click.option('--vpode_disc_eps',          help='Epsilon_s param for vp_ode discretization (if using this option).', metavar='FLOAT',                         type=float, default=1e-2, show_default=True)
-@click.option('--solver',                  help='Solver to use when simulating ODE', metavar='euler|heun',                                                    type=click.Choice(['euler', 'heun']), default='heun', show_default=True)
-@click.option('--bs',                      help='Maximum batch size', metavar='INT',                                                                          type=click.IntRange(min=1), default=800, show_default=True)
-@click.option('--seeds',                   help='Random seeds (e.g. 1,2,5-10)', metavar='LIST',                                                               type=parse_int_list, default='0-63', show_default=True)
-@click.option('--subdirs',                 help='Create subdirectory for every 1000 seeds',                                                                   is_flag=True)
+@click.option('--save_dir',                help='Where to save the output results', metavar='DIR',                                                                                                    type=str, required=True)
+@click.option('--network', 'network_pkl',  help='Network pickle filename', metavar='PATH|URL',                                                                                                        type=str, required=True)
+@click.option('--disc',                    help='Discretization to use when simulating ODE', metavar='ifs|vp_ode',                                                                                    type=click.Choice(['ifs', 'vp_ode']), default='vp_ode', show_default=True)
+@click.option('--vpode_disc_eps',          help='Epsilon_s param for vp_ode discretization (if using this option).', metavar='FLOAT',                                                                 type=float, default=1e-2, show_default=True)
+@click.option('--solver',                  help='Solver to use when simulating ODE', metavar='euler|heun',                                                                                            type=click.Choice(['euler', 'heun']), default='heun', show_default=True)
+@click.option('--bs',                      help='Maximum batch size', metavar='INT',                                                                                                                  type=click.IntRange(min=1), default=800, show_default=True)
+@click.option('--seeds',                   help='Random seeds (e.g. 1,2,5-10)', metavar='LIST',                                                                                                       type=parse_int_list, default='0-49999', show_default=True)
+@click.option('--subdirs',                 help='Create subdirectory for every 1000 seeds',                                                                                                           is_flag=True)
 
-@click.option('--n_iters',                 help='Number of ODE integration steps', metavar='INT',                                                             type=click.IntRange(min=1), default=256, show_default=True)
-@click.option('--end_time',                help='End melt/inflation time for ODE integration', metavar='FLOAT',                                               type=float, default=15.01, show_default=True)
-@click.option('--end_vars',                help='End of melt vars per dim (A0)', metavar='FLOAT',                                                             type=float, default=1., show_default=True)
-@click.option('--save_freq',               help='How often to save ODE sim steps.', metavar='INT',                                                            type=click.IntRange(min=1), default=10, show_default=True)
-@click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                       type=click.IntRange(min=1), default=3072, show_default=True)
-@click.option('--device_name',             help='Name of device we wish to run simulation on.', metavar='STR',                                                type=str, default='cuda', show_default=True)
-@click.option('--img_size',                help='Size of imgs being processed.', metavar='INT',                                                               type=int, default=32, show_default=True)
-@click.option('--img_ch',                  help='Number of channels in imgs being processed.', metavar='INT',                                                 type=int, default=3, show_default=True)
-@click.option('--gen_source',              help='Method used to construct gen samples', metavar='diag|empirical',                                             type=click.Choice(['diag', 'empirical']), default='diag', show_default=True)
-@click.option('--eps',                     help='Variance for compressed dims during PRR gen. (if gen from diag)', metavar='FLOAT',                           type=float, default=1., show_default=True)
-@click.option('--prev_melt',               help='Path to previous melt results to be used for gen (if from empirical covariance)', metavar='STR',             type=str, default='', show_default=True)
+@click.option('--n_iters',                 help='Number of ODE integration steps', metavar='INT',                                                                                                     type=click.IntRange(min=1), default=256, show_default=True)
+@click.option('--end_time',                help='End melt/inflation time for ODE integration', metavar='FLOAT',                                                                                       type=float, default=15.01, show_default=True)
+@click.option('--end_vars',                help='End of melt vars per dim (A0)', metavar='FLOAT',                                                                                                     type=float, default=1., show_default=True)
+@click.option('--save_freq',               help='How often to save ODE sim steps.', metavar='INT',                                                                                                    type=click.IntRange(min=1), default=10, show_default=True)
+@click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                                                               type=click.IntRange(min=1), default=3072, show_default=True)
+@click.option('--device_name',             help='Name of device we wish to run simulation on.', metavar='STR',                                                                                        type=str, default='cuda', show_default=True)
+@click.option('--img_size',                help='Size of imgs being processed.', metavar='INT',                                                                                                       type=int, default=32, show_default=True)
+@click.option('--img_ch',                  help='Number of channels in imgs being processed.', metavar='INT',                                                                                         type=int, default=3, show_default=True)
+@click.option('--gen_source',              help='Method used to construct covariance used to obtain initial samples for generation. Defaults to diag.', metavar='diag|empirical',                     type=click.Choice(['diag', 'empirical']), default='diag', show_default=True)
+@click.option('--eps',                     help='Latent space compressed dimensions variance (if PRR gen)', metavar='FLOAT',                                                                          type=float, default=1., show_default=True)
+@click.option('--prev_melt',               help='Path to previous melt/inflation results to be used for gen (if using empirical covariance)', metavar='STR',                                          type=str, default='', show_default=True)
 
 #------------------------------------------------------------------------------#
 def main(save_dir, network_pkl, subdirs, seeds, bs, **kwargs):
@@ -92,6 +91,17 @@ def main(save_dir, network_pkl, subdirs, seeds, bs, **kwargs):
     
     These can later be used to compute FID scores for given 
     network/model.
+    
+    Of note, for generation, covariance used to construct 
+    initial samples can be either: 
+        
+        1) Diagonal, with entries corresponding to preserved dimensions being 1
+        and entries corresponding to compressed dimesions being equal to the same 
+        small value (--eps)
+        2) Empirical, this covariance is estimated from a previous inflation simulation
+        (i.e., using final step/time point of inflation). 
+        
+    Default is to use diagonal covariance. 
     """
     
     #get all other args and pass it to general opts dict

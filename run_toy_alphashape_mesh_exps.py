@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 
-Script to run coverage experiments for 2D and 3D toys
+Runs coverage experiments for 2D and 3D toys
 using either 2D alpha-shapes or 3D alpha-meshes. 
 
 """
@@ -20,7 +20,7 @@ from pfODE_sim.toy_ODE import sim_batch_net_ODE
 #general args
 @click.option('--network', 'network_pkl',   help='Network pickle filename', metavar='PATH|URL',                                                                type=str, required=True)
 @click.option('--save_dir',                 help='Where to save the output coverages', metavar='DIR',                                                          type=str, required=True)
-@click.option('--data_name',                help='Which dset we will be simulating ODE for.', metavar='STR',                                                   type=str, required=True)
+@click.option('--data_name',                help='Which toy dset we will be running experiments for.', metavar='STR',                                          type=str, required=True)
 @click.option('--data_dim',                 help='Number of dimensions in original data.', metavar='INT',                                                      type=click.IntRange(min=2), default=2, show_default=True)
 @click.option('--dims_to_keep',             help='Number of original data dims to keep.', metavar='INT',                                                       type=click.IntRange(min=1), default=2, show_default=True)
 @click.option('--device_name',              help='Str for device name we wish to use', metavar='STR',                                                          type=str, default='cuda', show_default=True)
@@ -29,12 +29,12 @@ from pfODE_sim.toy_ODE import sim_batch_net_ODE
 #args for pfODE simulation
 @click.option('--steps', 'num_steps',       help='Number of steps for ODE integration', metavar='INT',                                                         type=click.IntRange(min=1), default=701, show_default=True)
 @click.option('--h',                        help='Step size for ODE integration', metavar='FLOAT',                                                             type=click.FloatRange(max=1e-1, max_open=True), default=1e-2, show_default=True)
-@click.option('--end_vars',                 help='Ending variance per dim (for scaling, A0)', metavar='FLOAT',                                                 type=float, default=1., show_default=True)
-@click.option('--eps',                      help='Latent space variance (at end of inflation) for compressed dimensions.', metavar='FLOAT',                    type=click.FloatRange(min=1e-40, min_open=True), default=1e-2, show_default=True)
-@click.option('--save_freq',                help='How often to save ODE integration results', metavar='INT',                                                   type=click.IntRange(min=1), default=1, show_default=True)
+@click.option('--end_vars',                 help='Ending variance per dim for scaling (A0)', metavar='FLOAT',                                                  type=float, default=1., show_default=True)
+@click.option('--eps',                      help='Latent space compressed dimensions variance (for PRR schedules)', metavar='FLOAT',                           type=click.FloatRange(min=1e-40, min_open=True), default=1e-2, show_default=True)
+@click.option('--save_freq',                help='How often to save ODE integration results', metavar='INT',                                                   type=click.IntRange(min=1), default=10, show_default=True)
 
 #args for actual experiment set up 
-@click.option('--boundary_pts', 'num_bpts', help='Number of boundary pts to sample per boundary', metavar='INT',                                               type=click.IntRange(min=1), default=200, show_default=True)
+@click.option('--boundary_pts', 'num_bpts', help='Number of boundary pts to sample per bounding sphere', metavar='INT',                                       type=click.IntRange(min=1), default=200, show_default=True)
 @click.option('--test_pts', 'num_testpts',  help='Number of test pts to sample', metavar='INT',                                                                type=click.IntRange(min=1), default=20000, show_default=True)
 @click.option('--r_min',                    help='Smallest radius for boundaries', metavar='FLOAT',                                                            type=float, default=0.5, show_default=True)
 @click.option('--r_max',                    help='Largest radius for boundaries', metavar='FLOAT',                                                             type=float, default=3.5, show_default=True)

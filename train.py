@@ -6,11 +6,8 @@
 # work. If not, see http://creativecommons.org/licenses/by-nc-sa/4.0/
 
 """
-Train diffusion-based generative model using the techniques described in the
-paper "Elucidating the Design Space of Diffusion-Based Generative Models".
-
-
-Added functionality to train models using proposed IFs preconditioning.
+Train diffusion-based generative model using inflationary flows 
+pre-conditioning and loss. 
 """
 
 import os
@@ -46,62 +43,62 @@ def parse_int_list(s):
 @click.command()
 
 # Main options.
-@click.option('--outdir',        help='Where to save the results', metavar='DIR',                                           type=str, required=True)
-@click.option('--data',          help='Path to the dataset', metavar='ZIP|DIR',                                             type=str, required=True)
-@click.option('--cond',          help='Train class-conditional model', metavar='BOOL',                                      type=bool, default=False, show_default=True)
-@click.option('--arch',          help='Network architecture', metavar='ddpmpp|ncsnpp|adm',                                  type=click.Choice(['ddpmpp', 'ncsnpp', 'adm']), default='ddpmpp', show_default=True)
-@click.option('--precond',       help='Preconditioning & loss function', metavar='vp|ve|edm|ifs',                           type=click.Choice(['vp', 've', 'edm', 'ifs']), default='ifs', show_default=True)
-@click.option('--data_dim',      help='Dimensionality (C*H*W) of data.', metavar='INT',                                     type=int, required=True)
-@click.option('--dims_to_keep',  help='Number of dimensions to keep', metavar='INT',                                        type=int, required=True)
-@click.option('--g_rescaling',   help='Global rescaling for g tensor.', metavar='FLOAT',                                    type=float, default=1., show_default=True) 
-@click.option('--gamma0',        help='Initial melting kernel width', metavar='FLOAT',                                      type=click.FloatRange(min=5e-4, min_open=False), default=5e-4, show_default=True)
-@click.option('--rho',           help='Exponent constant factor.', metavar='FLOAT',                                         type=click.FloatRange(min=1.0, min_open=False), default=1.0, show_default=True)
-@click.option('--tmin',          help='Smallest melt time/sigma to consider', metavar='FLOAT',                              type=click.FloatRange(min=1e-7, min_open=False), default=1e-7, show_default=True)
-@click.option('--tmax',          help='Largest melt time/sigma to consider', metavar='FLOAT',                               type=click.FloatRange(min=1.0, min_open=False), default=15.01, show_default=True)
-@click.option('--space',         help='Space Net should be trained on', metavar='ES|IS',                                    type=click.Choice(['ES', 'IS']), default='ES', show_default=True)
-@click.option('--t_sampling',    help='How to sample ts to be used during training', metavar='uniform|normal',              type=click.Choice(['uniform', 'normal']), default='uniform', show_default=True)
+@click.option('--outdir',        help='Where to save the results', metavar='DIR',                                                         type=str, required=True)
+@click.option('--data',          help='Path to the dataset', metavar='ZIP|DIR',                                                           type=str, required=True)
+@click.option('--cond',          help='Train class-conditional model', metavar='BOOL',                                                    type=bool, default=False, show_default=True)
+@click.option('--arch',          help='Network architecture', metavar='ddpmpp|ncsnpp|adm',                                                type=click.Choice(['ddpmpp', 'ncsnpp', 'adm']), default='ddpmpp', show_default=True)
+@click.option('--precond',       help='Preconditioning & loss function', metavar='vp|ve|edm|ifs',                                         type=click.Choice(['vp', 've', 'edm', 'ifs']), default='ifs', show_default=True)
+@click.option('--data_dim',      help='Dimensionality (C*H*W) of data.', metavar='INT',                                                   type=int, required=True)
+@click.option('--dims_to_keep',  help='Number of dimensions to keep', metavar='INT',                                                      type=int, required=True)
+@click.option('--g_rescaling',   help='Global rescaling for g tensor. Defaults to NO re-scaling(1)', metavar='FLOAT',                     type=float, default=1., show_default=True) 
+@click.option('--gamma0',        help='Initial melting kernel width', metavar='FLOAT',                                                    type=click.FloatRange(min=5e-4, min_open=False), default=5e-4, show_default=True)
+@click.option('--rho',           help='Constant for exponential growth/inflation.', metavar='FLOAT',                                      type=click.FloatRange(min=1.0, min_open=False), default=1.0, show_default=True)
+@click.option('--tmin',          help='Smallest melt time/sigma to sample', metavar='FLOAT',                                              type=click.FloatRange(min=1e-7, min_open=False), default=1e-7, show_default=True)
+@click.option('--tmax',          help='Largest melt time/sigma to sample', metavar='FLOAT',                                               type=click.FloatRange(min=1.0, min_open=False), default=15.01, show_default=True)
+@click.option('--space',         help='Space Net should be trained on. Defaults to image space (IS)', metavar='ES|IS',                    type=click.Choice(['ES', 'IS']), default='IS', show_default=True)
+@click.option('--t_sampling',    help='How to sample ts to be used during training. Defaults to uniform.', metavar='uniform|normal',      type=click.Choice(['uniform', 'normal']), default='uniform', show_default=True)
 
 # Hyperparameters.
-@click.option('--duration',      help='Training duration', metavar='MIMG',                                                  type=click.FloatRange(min=0, min_open=True), default=200, show_default=True)
-@click.option('--batch',         help='Total batch size', metavar='INT',                                                    type=click.IntRange(min=1), default=512, show_default=True)
-@click.option('--batch-gpu',     help='Limit batch size per GPU', metavar='INT',                                            type=click.IntRange(min=1))
-@click.option('--batch_pca',     help='Bs used to compute data pca. Must be >= data_dim', metavar='INT',                    type=int, default=50000, show_default=True)
-@click.option('--cbase',         help='Channel multiplier  [default: varies]', metavar='INT',                               type=int)
-@click.option('--cres',          help='Channels per resolution  [default: varies]', metavar='LIST',                         type=parse_int_list)
-@click.option('--lr',            help='Learning rate', metavar='FLOAT',                                                     type=click.FloatRange(min=0, min_open=True), default=10e-4, show_default=True)
-@click.option('--ema',           help='EMA half-life', metavar='MIMG',                                                      type=click.FloatRange(min=0), default=0.5, show_default=True)
-@click.option('--dropout',       help='Dropout probability', metavar='FLOAT',                                               type=click.FloatRange(min=0, max=1), default=0.13, show_default=True)
-@click.option('--augment',       help='Augment probability', metavar='FLOAT',                                               type=click.FloatRange(min=0, max=1), default=0.12, show_default=True)
-@click.option('--xflip',         help='Enable dataset x-flips', metavar='BOOL',                                             type=bool, default=False, show_default=True)
+@click.option('--duration',      help='Training duration', metavar='MIMG',                                                                type=click.FloatRange(min=0, min_open=True), default=275, show_default=True)
+@click.option('--batch',         help='Total batch size', metavar='INT',                                                                  type=click.IntRange(min=1), default=512, show_default=True)
+@click.option('--batch-gpu',     help='Limit batch size per GPU', metavar='INT',                                                          type=click.IntRange(min=1), default=64, show_default=True)
+@click.option('--batch_pca',     help='Batch size used to compute data pca. Must be >= data_dim', metavar='INT',                          type=int, default=50000, show_default=True)
+@click.option('--cbase',         help='Channel multiplier  [default: varies]', metavar='INT',                                             type=int)
+@click.option('--cres',          help='Channels per resolution  [default: varies]', metavar='LIST',                                       type=parse_int_list)
+@click.option('--lr',            help='Learning rate', metavar='FLOAT',                                                                   type=click.FloatRange(min=0, min_open=True), default=10e-4, show_default=True)
+@click.option('--ema',           help='EMA half-life', metavar='MIMG',                                                                    type=click.FloatRange(min=0), default=0.5, show_default=True)
+@click.option('--dropout',       help='Dropout probability', metavar='FLOAT',                                                             type=click.FloatRange(min=0, max=1), default=0.13, show_default=True)
+@click.option('--augment',       help='Augment probability', metavar='FLOAT',                                                             type=click.FloatRange(min=0, max=1), default=0.12, show_default=True)
+@click.option('--xflip',         help='Enable dataset x-flips', metavar='BOOL',                                                           type=bool, default=False, show_default=True)
 
 # Performance-related.
-@click.option('--fp16',          help='Enable mixed-precision training', metavar='BOOL',                                    type=bool, default=False, show_default=True)
-@click.option('--ls',            help='Loss scaling', metavar='FLOAT',                                                      type=click.FloatRange(min=0, min_open=True), default=1, show_default=True)
-@click.option('--bench',         help='Enable cuDNN benchmarking', metavar='BOOL',                                          type=bool, default=True, show_default=True)
-@click.option('--cache',         help='Cache dataset in CPU memory', metavar='BOOL',                                        type=bool, default=True, show_default=True)
-@click.option('--workers',       help='DataLoader worker processes', metavar='INT',                                         type=click.IntRange(min=1), default=1, show_default=True)
+@click.option('--fp16',          help='Enable mixed-precision training', metavar='BOOL',                                                  type=bool, default=False, show_default=True)
+@click.option('--ls',            help='Loss scaling', metavar='FLOAT',                                                                    type=click.FloatRange(min=0, min_open=True), default=1, show_default=True)
+@click.option('--bench',         help='Enable cuDNN benchmarking', metavar='BOOL',                                                        type=bool, default=True, show_default=True)
+@click.option('--cache',         help='Cache dataset in CPU memory', metavar='BOOL',                                                      type=bool, default=True, show_default=True)
+@click.option('--workers',       help='DataLoader worker processes', metavar='INT',                                                       type=click.IntRange(min=1), default=1, show_default=True)
 
 # I/O-related.
-@click.option('--desc',          help='String to include in result dir name', metavar='STR',                                type=str)
-@click.option('--nosubdir',      help='Do not create a subdirectory for results',                                           is_flag=True)
-@click.option('--tick',          help='How often to print progress', metavar='KIMG',                                        type=click.IntRange(min=1), default=50, show_default=True)
-@click.option('--snap',          help='How often to save snapshots', metavar='TICKS',                                       type=click.IntRange(min=1), default=50, show_default=True)
-@click.option('--dump',          help='How often to dump state', metavar='TICKS',                                           type=click.IntRange(min=1), default=500, show_default=True)
-@click.option('--seed',          help='Random seed  [default: random]', metavar='INT',                                      type=int)
-@click.option('--transfer',      help='Transfer learning from network pickle', metavar='PKL|URL',                           type=str)
-@click.option('--resume',        help='Resume from previous training state', metavar='PT',                                  type=str)
-@click.option('-n', '--dry-run', help='Print training options and exit',                                                    is_flag=True)
+@click.option('--desc',          help='String to include in result dir name', metavar='STR',                                              type=str)
+@click.option('--nosubdir',      help='Do not create a subdirectory for results',                                                         is_flag=True)
+@click.option('--tick',          help='How often to print progress', metavar='KIMG',                                                      type=click.IntRange(min=1), default=50, show_default=True)
+@click.option('--snap',          help='How often to save snapshots', metavar='TICKS',                                                     type=click.IntRange(min=1), default=125, show_default=True)
+@click.option('--dump',          help='How often to dump state', metavar='TICKS',                                                         type=click.IntRange(min=1), default=125, show_default=True)
+@click.option('--seed',          help='Random seed  [default: random]', metavar='INT',                                                    type=int)
+@click.option('--transfer',      help='Transfer learning from network pickle', metavar='PKL|URL',                                         type=str)
+@click.option('--resume',        help='Resume from previous training state', metavar='PT',                                                type=str)
+@click.option('-n', '--dry-run', help='Print training options and exit',                                                                  is_flag=True)
 
 def main(**kwargs):
-    """Train diffusion-based generative model using the techniques described in the
-    paper "Elucidating the Design Space of Diffusion-Based Generative Models".
+    """
+    Train diffusion-based generative model using inflationary flows 
+    pre-conditioning and loss".
 
     Examples:
 
     \b
-    # Train DDPM++ model for class-conditional CIFAR-10 using 8 GPUs
-    torchrun --standalone --nproc_per_node=8 train.py --outdir=training-runs \\
-        --data=datasets/cifar10-32x32.zip --cond=1 --arch=ddpmpp
+    # torchrun --rdzv_endpoint=0.0.0.0:29501 --outdir=out --data=datasets/cifar10-32x32.zip  \
+    --data_dim=3072 --dims_to_keep=3072 --rho=2 --batch=512 
     """
     opts = dnnlib.EasyDict(kwargs)
     torch.multiprocessing.set_start_method('spawn')

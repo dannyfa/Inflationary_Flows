@@ -40,7 +40,7 @@ python fid.py ref --data=datasets/afhqv2-32x32.zip --dest=fid-refs/afhqv2-32x32.
 
 To train a model on a given toy dataset, run: 
 ```.bash
-torchrun --rdzv_endpoint=0.0.0.0:29501 --outdir=out --data_name=circles \
+torchrun --rdzv_endpoint=0.0.0.0:29501 toy_train.py --outdir=out --data_name=circles \
 --data_dim=2 --dims_to_keep=2 --tmax=7.01
 ```
 
@@ -62,7 +62,7 @@ To train a model on a given image dataset:
 
 First, make sure you have downloaded and prepared the data using the `dataset_tool.py` script, as above. Then, run: 
 ```.bash
-torchrun --rdzv_endpoint=0.0.0.0:29501 --outdir=out --data=datasets/cifar10-32x32.zip  \
+torchrun --rdzv_endpoint=0.0.0.0:29501 train.py --outdir=out --data=datasets/cifar10-32x32.zip  \
 --data_dim=3072 --dims_to_keep=3072 --rho=2 --batch=512  
 ```
 Once again, `--data_dim` and `--dims_to_keep` define the specific schedule to be used. For instance, `data_dim==3072` and `dims_to_keep==3072` corresponds to PR-Preserving schedule for a 3x32x32 dataset. 
@@ -79,7 +79,7 @@ To simulate our proposed pfODEs for toy datasets, run:
 ```.bash
 torchrun --rdzv_endpoint=0.0.0.0:29501 toy_pfODE_int.py net --save_dir=out \
 --network=/networks/network.pkl --data_name=circles \
---data_dim=2 --dims_to_keep=2  
+--data_dim=2 --dims_to_keep=2 --steps=701 
 ```
 
 Simulation here entails inflation and roundtrip (from end of inflation), plus generation. 
@@ -114,13 +114,14 @@ As in toy case, simulations are saved to separate .npz files and all parameters 
 
 To run PR-Reducing simulations pass `--eps==xx`, using values shown in **Table 7 Of Appendix B.5**. These values represent latent space variance for compressed dimensions and are used to construct diagonal covariance from which we obtain initial Gaussian samples for generation.
 
+Of note, network pickle file passed (`--network`) schedule needs to match `--dims_to_keep` given.
 
 ## Computing FID scores 
 
 To compute FID scores for image datasets, run: 
 
 ```.bash
-torchrun --rdzv_endpoint=0.0.0.0:29501 gen_fid_samples --save_dir=fid-tmp --network=networks/network.pkl \
+torchrun --rdzv_endpoint=0.0.0.0:29501 gen_fid_samples.py --save_dir=fid-tmp --network=networks/network.pkl \
 --bs=500 --seeds=0-49999 --subdirs --dims_to_keep=3072 
 
 torchrun --rdzv_endpoint=0.0.0.0:29501 fid.py calc --images=fid-tmp \
@@ -150,7 +151,8 @@ Script outputs a .json file containing all simulation parameters along with mse 
 To run alpha-shape or mesh toy coverage experiments, run: 
 
 ```.bash
-torchrun --rdzv_endpoint=0.0.0.0:29501 --network=networks/network.pkl --save_dir=toy_mesh_exps-tmp \
+torchrun --rdzv_endpoint=0.0.0.0:29501 run_toy_alphashape_mesh_exps.py \
+--network=networks/network.pkl --save_dir=toy_mesh_exps-tmp \
 --data_name=circles --data_dim=2 --dims_to_keep=2 --steps=701 --h=1e-2
 ```
 

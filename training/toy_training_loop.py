@@ -3,10 +3,9 @@
 """
 training_loop for toy dsets 
 
-This is essentially same script as original
+This is essentially same script as for image datasets
 only made simpler and specifically tailored to toy dsets.
 
-This also supports either ifs or edm preconditioning schemes.
 """
 
 import os

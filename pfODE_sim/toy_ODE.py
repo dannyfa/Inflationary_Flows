@@ -34,7 +34,7 @@ def compute_score_num_den(C_inv, X, xj, eps=1e-30):
     
     Computes numerator and denominator for score
     term over entire set of test pts X for a given 
-    flow pt x_j. 
+    refence flow pt x_j. 
     
     Args:
     -------------------
@@ -68,14 +68,14 @@ def compute_score_num_den(C_inv, X, xj, eps=1e-30):
 def compute_unscaled_score(C_inv, X0s, curr_xs):
     """
     
-    Uses above method to compute unscaled score estimates
+    Uses above method to compute unscaled score estimates.
     
     Args
     ---------------------
     C_inv: torch.tensor - [dim, dim]. Inverse of current
     melting kernel covariance.
     X0s: torch.tensor [bs, dim]. Original (unscaled) 
-    set of data pts, to be used as flow field pts.
+    set of data pts, to be used as flow field pts (x_j's).
     curr_xs: torch.tensor [bs, dim]. Particles at 
     current time pt. These should also be UNSCALED.
     
@@ -93,18 +93,18 @@ def compute_unscaled_score(C_inv, X0s, curr_xs):
 def compute_gt_flow(curr_tilde_xs, curr_xs, X0s, g, t, xi_star, A0=1., gamma0=5e-4, rho=1.):
     """
     Computes actual flow (dx/dt) using discrete score estimates.
-    This equivalent to Eqn (171) in Appendix B.3.1, only substituting 
+    This is equivalent to Eqn (171) in Appendix B.3.1, only substituting 
     C^{-1}(t)(D(x, t) - x) for the discrete score estimates and  using
     diagonal forms for A(t), C(t).
     
     Args
     ----
     curr_tilde_xs: torch.Tensor [bs, dim]. Current unscaled 
-    evolving pts
+    evolving pts.
     curr_xs: torch.Tensor [bs, dim]. Current SCALED
     evolving pts.
     X0s: torch.tensor [bs, dim]. Original (unscaled) 
-    set of data pts, to be used as flow field pts.
+    set of data pts, to be used as flow field pts (x_j's).
     g: torch.Tensor [dim]. Constant g to be used for noise,
     scale schedules.
     t: float. Current time pt being simulated.
@@ -167,6 +167,21 @@ def sim_batch_discrete_ODE(batch, x0, g, data_eigs, W, int_mode='melt', n_iters=
     A0: scalar. Scaling factor for ending diag. cov. we will achieve at steady state.
     
     save_freq: frequency at which to save melting results.
+    
+    
+    Returns
+    -------
+    Dictionary containing updates (saved at specified save_freq)
+    for following variables: 
+        1) tilde_xs: unscaled batch being simulated (in image space)
+        2) tilde_xs_es: unscaled batch being simulated (in eigen space)
+        3) xs: scaled batch being simulated (in image space)
+        4) xs_es: scaled batch being simulated (in eigen space)
+        5) dxs: flow updates (in image space) for scaled variable.
+        6) dxs_es: flow updates (in eigen space) for scaled variable.
+        7) unscaled_scores: discrete (unscaled) scores
+        8) gt_netout: GT/discrete equivalent of network output D(x, t). Computed
+        using relationship between network outputs and scores presented in paper.
       
     """
     
@@ -262,7 +277,7 @@ def compute_net_flow(D_tilde_xs, space, W, xs, s, s_dot, gamma_inv, gamma_dot):
     ---------------
     
     D_tilde_xs: torch.Tensor [bd, dim]. De-noised network outputs
-    in same basis we want to compute flow in. 
+    in same basis/space we want to compute flow in. 
     
     space: str. Desired space/basis we should compute flow in. Should match
     net.space attribute.
@@ -271,13 +286,13 @@ def compute_net_flow(D_tilde_xs, space, W, xs, s, s_dot, gamma_inv, gamma_dot):
     as its columns.
     
     xs: torch.Tensor [bs, dim]. Scaled xs at current time pt in 
-    desired basis. 
+    desired basis/space. 
     
-    s_dot: derivative of scaling.
+    s_dot: temporal derivative of scaling.
     
-    gamma_inv: diagonal of inverse covariance matrix for current time pt.
+    gamma_inv: diagonal of inverse noise covariance matrix at current time pt.
     
-    gamma_dot: diagonal of derivative of covariance mat for current 
+    gamma_dot: diagonal of temporal derivative of noise covariance mat for current 
     time pt.
     
     """
@@ -299,6 +314,7 @@ def compute_net_flow(D_tilde_xs, space, W, xs, s, s_dot, gamma_inv, gamma_dot):
     return dx_dt
 
 def get_netout_unscld_scores(net, curr_tilde_xs_es, ts):
+    
     """
     Gets network output (D(x, t)) for a given set of unscaled, noised
     inputs in ES and a given time pt. 
@@ -310,8 +326,9 @@ def get_netout_unscld_scores(net, curr_tilde_xs_es, ts):
     net: trained instance of IfsToyPreCond class. 
     curr_tilde_xs_es: torch.Tensor [bs, dim]. Contains batch
     of noised inputs in ES to be passed as inputs to net.
+    These should be in ES regardless of space network was trained on.
     ts: float. Time pt we wish to query network at. This will
-    be properly shaped and passed to net as conditioning input.
+    be properly shaped and passed to net as noise conditioning input.
     
     """
     net_ts = (torch.ones(curr_tilde_xs_es.shape[0]) * ts).to(curr_tilde_xs_es.device)
@@ -339,15 +356,15 @@ def get_netout_unscld_scores(net, curr_tilde_xs_es, ts):
 def take_Euler_step(D_tilde_xs, xs_es, space, W, s, s_dot, gamma_inv, gamma_dot, t, t_plus_one):
     """
     
-    Computes flow (dx/dt) in appropriate space and updates scaled variables 'xs'/'xs_es'
-    also in appropriate space. 
+    CTakes Euler update in appropriate space/basis we are simulating 
+    out flows in.
     
     Args
     -----
     D_tilde_xs: torch.Tensor [bs, dim]. Tensor with de-noised network outputs
     (in same space as net.space).
     xs_es: torch.Tensor [bs, dim]. Tensor with current scaled variables 
-    in eigen space (ES). This might be appropriately passed to IS prior to updating variable.
+    in eigen space (ES). This might be appropriately passed to IS prior to updating variable (if needed).
     space: 'str'. Space/basis network was trained on. This matches space for D_tilde_xs.
     W: torch.Tensor [dim, dim]. Tensor containing target data eigenvectors as its columns.
     s: float. Scale at time (t).
@@ -395,9 +412,22 @@ def sim_batch_net_ODE(batch, net, int_mode='melt', n_iters=1501, h=1e-2, A0=1., 
     
     h: step size
         
-    A0: scalar. Scaling factor for ending diag. cov. we will achieve at steady state.
+    A0: scalar. Scaling factor.
     
     save_freq: frequency at which to save melting results.
+    
+    Returns
+    -------
+    Dictionary containing updates (saved at specified save_freq)
+    for following variables: 
+        1) tilde_xs: unscaled batch being simulated (in image space)
+        2) tilde_xs_es: unscaled batch being simulated (in eigen space)
+        3) xs: scaled batch being simulated (in image space)
+        4) xs_es: scaled batch being simulated (in eigen space)
+        5) dxs: flow updates (in image space) for scaled variable.
+        6) dxs_es: flow updates (in eigen space) for scaled variable.
+        7) unscaled_scores: discrete (unscaled) scores
+        8) net_outs: network outputs D(x, t) 
 
     """
     

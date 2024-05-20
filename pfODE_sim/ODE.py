@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 
-Contains methods needed to run High-Dimensional Melt, 
-Rdtrp and Gen simulations.
+Contains methods needed to run melt (aka inflation), 
+rdtrp and generation simulations for image datasets.
 
 As in rest of code "melt" == "inflation" for methods
 that take pfODE direction as part of their arguments.
@@ -24,10 +24,23 @@ import dnnlib
 #Method to compute net outputs (D_x) using IFs nets 
 def compute_ifs_netout(net, tilde_xs, shape, t):
     """
-    Uses trained IFs network to compute a de-noised output D_x
+    Uses trained network to compute a de-noised output D_x
     for a given noisy input (tilde_xs).
-    This de-noise output is then used to compute our proposed
+    This de-noised output is then used to compute our proposed
     flow.
+    
+    Args
+    -----
+    net: trained instance of IFsPreCond. 
+    tilde_xs: unscaled noised batch samples to feed to network. 
+    Should be in image space (IS). If needed, these will be transformed
+    to eigen-space.
+    shape: list (BxCxHxW). List containing original shape of batch/images.
+    t: float. Time pt to use when constructing net noise conditioining inputs.
+    
+    Returns
+    -----
+    De-noised network outputs D(x,t) for given batch/samples.
     """
     #pass inputs to ES -- all IFs nets expect inputs to be in ES 
     tilde_xs_es = torch.einsum('ij, bjk -> bik', net.W.T, tilde_xs.unsqueeze(-1)).squeeze(-1)
@@ -42,31 +55,40 @@ def compute_ifs_netout(net, tilde_xs, shape, t):
     return D_tilde_xs
 
 
-# Method to compute flow using Ifs net outputs (D_x)
+# Method to compute flow using net outputs (D_x)
 def compute_net_flow(D_tilde_xs, space, W, xs, s, s_dot, gamma_inv, gamma_dot):
     """
     Computes flow Equation in image space (IS) or eigenspace (ES)
+    using network outputs D(x, t)
     
+    Args
+    -------
     D_tilde_xs: torch.Tensor [bs, dim]. Net output. Should be in desired/correct 
-    space flow is being computed in.
+    space flow is being computed in (same as net.space).
     
-    space: str. Desired space we should compute flow in. ('ES' or 'IS')
+    space: str. Desired space we should compute flow in. ('ES' or 'IS'). 
+    Should match net.space.
     
     W: torch.Tensor [dim, dim]. Tensor containing data eigenvectors 
     as its columns.
     
     xs: torch.Tensor [bs, dim]. Scaled xs at current time pt in 
-    desired space. 
+    space/basis flow is being simulated.
     
     s: float. Scaling at current time pt.
     
     s_dot: float. Derivative of scaling at current time pt.
     
-    gamma_inv: torch.tensor [dim]. Diagonal of inverse kernel covariance 
+    gamma_inv: torch.tensor [dim]. Diagonal of inverse noise covariance 
     matrix for current time pt.
     
-    gamma_dot: torch..tensor[dim]. Diagonal of derivative of kernel 
+    gamma_dot: torch.tensor[dim]. Diagonal of temporal derivative of noise 
     covariance mat for current time pt.
+    
+    
+    Returns
+    -------
+    Flow updates (dx_dt) for given batch and time pt.
     
     """
     if space == 'ES':
@@ -106,17 +128,17 @@ def do_Euler_update(get_netout, net, xs_vars_dict, t, t_plus_one, shape, net_kwa
     t_plus_one: float. Next time pt.
     shape: list (B, C, H, W). List with original image shapes.
     net_kwargs: dictionary with additional arguments used to construct s, s_dot,
-    gamma_inv, and gamma_dot needed for flow calculation.
+    gamma_inv, and gamma_dot needed for flow (dx_dt) calculation.
     
     Returns
     --------
     Dictionary containing Euler updated/next 'xs' variables (see above) along with:
         1) 'net_outputs': D(x, t) network outputs for current time pt.
         2) 'unscaled scores': C^{-1}(t) (D(x, t) - x), for current time pt.
-        3) 'dxs': flow updates for current time pt (in IS)
-        4) 'dxs_es': flow updates for current time (in ES).
-        5) 'dx_dt': flow update without time step applied (in IS).
-        6) 'dx_dt_es': flow update without time step applied (in ES).
+        3) 'dxs': scaled flow updates for current time pt (in IS)
+        4) 'dxs_es': scaled flow updates for current time (in ES).
+        5) 'dx_dt': scaled flow update without time step applied (in IS).
+        6) 'dx_dt_es': scaled flow update without time step applied (in ES).
     
     """
     #get net output 
@@ -173,7 +195,7 @@ def do_Euler_update(get_netout, net, xs_vars_dict, t, t_plus_one, shape, net_kwa
 def do_Heun_update(get_netout, net, euler_results_dict, xs_vars_dict, t, t_plus_one, shape, net_kwargs):
     """
    
-    Does a Heun udpate/step 
+    Does a Heun udpate/step. 
     
     Args
     -------
@@ -181,21 +203,21 @@ def do_Heun_update(get_netout, net, euler_results_dict, xs_vars_dict, t, t_plus_
     inputs as arguments. Xs inputs should be in images space, regardless of net.space. 
     t is jsut a float. 
     net: trained instance of IFsPreCond. 
-    euler_results_dict: dictionary containing outputs of Euler step for time "t".
-    xs_vars_dict: dictionary containing our cureent 'xs' variables, at time "t" (Same as for Euler's input')
+    euler_results_dict: dictionary containing outputs of Euler step for time "t" (see above).
+    xs_vars_dict: dictionary containing our cureent 'xs' variables, at time "t" (Same as for Euler's step/update input').
     t: float. Current time pt.
     t_plus_one: float. Next time pt.
     shape: list (B, C, H, W). List with original image shapes.
     net_kwargs: dictionary with additional arguments used to construct s, s_dot,
-    gamma_inv, and gamma_dot needed for flow calculation.    
+    gamma_inv, and gamma_dot needed for flow (dx_dt) calculation.    
     
     Returns
     --------
-    Dictionary containing Euler updated 'xs' variables (see above) along with:
+    Dictionary containing Heun updated 'xs' variables (see above) along with:
         1) 'net_outputs': D(x, t) network outputs for current time pt.
         2) 'unscaled scores': C^{-1}(t) (D(x, t) - x), for current time pt.
-        3) 'dxs': flow updates for current time pt (in IS)
-        4) 'dxs_es': flow updates for current time (in ES).    
+        3) 'dxs': scaled flow updates for current time pt (in IS)
+        4) 'dxs_es': scaled flow updates for current time (in ES).    
     
     """
     #get net output 
@@ -256,13 +278,7 @@ def do_ODE_step(get_netout, net, curr_tilde_xs, curr_tilde_xs_es, curr_xs, curr_
     
     """
     
-    Runs ODE update using either Euler or Heun solver choices. 
-    
-    Note that we still return D_x and unscaled_scores here --> these correspond to second step 
-    if using heun solver.
-    
-    Returns: dict. containing updated xs_es, xs, tilde_xs_es, tilde_xs, net_ouputs, 
-    unscaled_scores, dxs, and dxs_es .
+    Runs pfODE update using either Euler or Heun solver choices. 
     
     """
     #construct xs variables dict 
@@ -292,7 +308,7 @@ def do_ODE_sim(batch, net, shape, g, W, xi_star, get_netout, int_mode, n_iters, 
                save_freq, disc='vp_ode', solver='heun', eps=1e-2):
     
     """
-    Method to simulate our IFs pfODEs.
+    Method to simulate our pfODEs for image datasets.
     
     Args
     ----
@@ -308,26 +324,33 @@ def do_ODE_sim(batch, net, shape, g, W, xi_star, get_netout, int_mode, n_iters, 
     or backwards ("gen"). 
     n_iters:int. Num of iterations/steps to take.
     end_time: float. End melt/start gen time for ODE sim.
-    A0: float. Equilibrium variance we wish to reach.
-    gamma0: float. Min melting kernel variance.
+    A0: float. Equilibrium variance we wish to reach (used in scaling schedule).
+    gamma0: float. Min noise kernel variance.
     rho: float. Cte for exponential noise growth.
     save_freq:int. How often to save results from ODE sim.
     
     disc: str. Option for discretization schedule. 
     solver: str. Option for solver 
-    eps: option for epsilo_s if using VP_ODE disc.
-    kwargs: dict containing args for pre-trained net D_x
-    methods. 
+    eps: option for epsilo_s if using VP_ODE disc. Defaults to 1e-2.
 
     Returns
     -------
-    Dictionary containing results from ODE simulation.
+    Dictionary containing results from ODE simulationsaved at specified save_freq. 
+    This dictionary contains the following keys: 
+        1) tilde_xs: unscaled batch being simulated (in image space)
+        2) tilde_xs_es: unscaled batch being simulated (in eigen space)
+        3) xs: scaled batch being simulated (in image space)
+        4) xs_es: scaled batch being simulated (in eigen space)
+        5) dxs: flow updates (in image space) for scaled variable.
+        6) dxs_es: flow updates (in eigen space) for scaled variable.
+        7) unscaled_scores: (unscaled) scores computed using network outputs.
+        8) gnet_outs: de-noised network outputs D(x, t).
     """
    
     #set up results dict 
     res_dict = {'tilde_xs':[], 'xs':[], 'tilde_xs_es':[], 'xs_es':[], 
                'dxs':[], 'dxs_es':[], 'net_outs':[], 
-               'unscaled_scores':[], 'ts':[]}
+               'unscaled_scores':[]}
 
     #get our time pts 
     taus = dnnlib.util.get_disc_times(disc=disc, end_time=end_time, n_iters=n_iters, int_mode=int_mode, eps=eps)
@@ -351,8 +374,7 @@ def do_ODE_sim(batch, net, shape, g, W, xi_star, get_netout, int_mode, n_iters, 
     res_dict['tilde_xs'].append(curr_tilde_xs.cpu().numpy())
     res_dict['xs'].append(curr_xs.cpu().numpy())
     res_dict['tilde_xs_es'].append(curr_tilde_xs_es.cpu().numpy())
-    res_dict['xs_es'].append(curr_xs_es.cpu().numpy())    
-    res_dict['ts'].append(taus[0])   
+    res_dict['xs_es'].append(curr_xs_es.cpu().numpy())     
     
     #get neural net kwargs...
     net_kwargs = {'g':g, 'W':W, 'rho':rho, 'gamma0':gamma0, 'A0':A0, 'xi_star':xi_star}
@@ -390,21 +412,16 @@ def do_ODE_sim(batch, net, shape, g, W, xi_star, get_netout, int_mode, n_iters, 
 def sim_batch_net_ODE(batch, net, device, shape=None, int_mode='melt', n_iters=1501, end_time=15.01, \
                                           A0=1., save_freq=10, disc='vp_ode', solver='heun', eps=1e-2, endsim_imgs_only=False, **kwargs):
     """
-    General wrapper to run melt/gen from trained HD networks. 
-    Should be able to handle ODE simulation from either nets trained explicitly in our
-    "IFs" schedule or on Karras schedule "PreTrained". 
-    """
-    #--------------------------------------------#
-    #check what type of net we are dealing with 
-    #adjust sim params acoordingly
-    #--------------------------------------------#
+    General wrapper to integrate pfODE using networks trained on image datasets.
     
+    Uses methods define above for actual pfODE integration.
+    """
 
     print('*'*40)
     print('Running {} from IFs net...'.format(int_mode))
     print('*'*40)
 
-    #set/adjust args -- esp device for net attributes 
+    #set/adjust args -- esp. device for net attributes 
     g = torch.from_numpy(net.g.cpu().numpy()).type(torch.float32).to(device)
     data_eigs = torch.from_numpy(net.data_eigs).to(device)
     W = torch.from_numpy(net.W.cpu().numpy()).type(torch.float32).to(device) 

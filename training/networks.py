@@ -5,8 +5,15 @@
 # You should have received a copy of the license along with this
 # work. If not, see http://creativecommons.org/licenses/by-nc-sa/4.0/
 
-"""Model architectures and preconditioning schemes used in the paper
-"Elucidating the Design Space of Diffusion-Based Generative Models"."""
+"""
+
+Model architectures and preconditioning schemes used.
+
+Includes original work from EDM repository 
+along with modifications needed to implement inflationary flows
+pre-conditioning for toy and image datasets.
+
+"""
 
 import numpy as np
 import torch

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 
-Runs melt/inflation, roundtrip, and generation 
+Runs inflation (aka melt), roundtrip, and generation 
 for toy datasets using either: 
     
     1) pfODE integration with discrete/"GT" score estimates
@@ -59,9 +59,9 @@ def main():
 
 @click.option('--steps', 'num_steps',      help='Number of ODE integration steps', metavar='INT',                                                                                          type=click.IntRange(min=1), default=1501, show_default=True)
 @click.option('--h',                       help='Step size for ODE integration', metavar='FLOAT',                                                                                          type=click.FloatRange(max=1e-1, max_open=True), default=1e-2, show_default=True)
-@click.option('--end_vars',                help='Ending variance per dim (A0)', metavar='FLOAT',                                                                                           type=float, default=1., show_default=True)
-@click.option('--eps',                     help='End of melt/inflation variance for compressed dims (if prr)', metavar='FLOAT',                                                            type=float, default=1, show_default=True)
-@click.option('--rho',                     help='Exp. growth constant', metavar='FLOAT',                                                                                                   type=float, default=1., show_default=True)
+@click.option('--end_vars',                help='Ending variance per dim for scaing (A0)', metavar='FLOAT',                                                                                type=float, default=1., show_default=True)
+@click.option('--eps',                     help='Latent space compressed dimension variance (for PRR gen)', metavar='FLOAT',                                                               type=float, default=1, show_default=True)
+@click.option('--rho',                     help='Exponential growth/inflation constant', metavar='FLOAT',                                                                                  type=float, default=1., show_default=True)
 @click.option('--gamma0',                  help='Minimum melting kernel variance', metavar='FLOAT',                                                                                        type=float, default=5e-4, show_default=True)
 
 
@@ -78,6 +78,9 @@ def discrete(save_dir, data_name, total_samples, **kwargs):
     Calls on sim_batch_discrete_ODE to run inflation/melt, roundtrip
     and generation for a large sample of a given toy dataset using 
     discrete/"GT" score estimates. 
+    
+    This is left as a sanity check -- not used in actual paper 
+    experiments.
     
     """
     #get all other args and pass it to general opts dict
@@ -169,8 +172,8 @@ def discrete(save_dir, data_name, total_samples, **kwargs):
 
 @click.option('--steps', 'num_steps',      help='Number of ODE integration steps', metavar='INT',                                                                                          type=click.IntRange(min=1), default=1501, show_default=True)
 @click.option('--h',                       help='Step size for ODE integration', metavar='FLOAT',                                                                                          type=click.FloatRange(max=1e-1, max_open=True), default=1e-2, show_default=True)
-@click.option('--end_vars',                help='Ending variance per dim (A0)', metavar='FLOAT',                                                                                           type=float, default=1., show_default=True)
-@click.option('--eps',                     help='End of melt/inflation variance for compressed dims (if prr)', metavar='FLOAT',                                                            type=float, default=1, show_default=True)
+@click.option('--end_vars',                help='Ending variance per dim for scaling (A0)', metavar='FLOAT',                                                                               type=float, default=1., show_default=True)
+@click.option('--eps',                     help='Latent space compressed dimensions variance (for PRR gen)', metavar='FLOAT',                                                              type=float, default=1, show_default=True)
 
 
 @click.option('--save_freq',               help='How often to save ODE integration steps', metavar='INT',                                                                                  type=click.IntRange(min=1), default=10, show_default=True)
@@ -186,6 +189,8 @@ def net(save_dir, network_pkl, data_name, total_samples, **kwargs):
     Calls on sim_batch_net_ODE to run inflation/melt, roundtrip
     and generation for a large sample of a given toy dataset using 
     network-based score estimates. 
+    
+    This is what we use for toy experiments in paper.
     
     """    
     #get all other args and pass it to general opts dict

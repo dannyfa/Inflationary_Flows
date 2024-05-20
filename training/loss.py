@@ -5,8 +5,12 @@
 # You should have received a copy of the license along with this
 # work. If not, see http://creativecommons.org/licenses/by-nc-sa/4.0/
 
-"""Loss functions used in the paper
-"Elucidating the Design Space of Diffusion-Based Generative Models"."""
+"""
+Loss functions used. 
+
+Containts both original loss fns (from EDM paper)
+and inflationary flow loss fns (for toy and image data).
+"""
 
 import torch
 from torch_utils import persistence

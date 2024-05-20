@@ -94,14 +94,9 @@ def main():
     Examples:
 
     \b
-    # Generate 50000 images and save them as fid-tmp/*/*.png
-    torchrun --standalone --nproc_per_node=1 generate.py --outdir=fid-tmp --seeds=0-49999 --subdirs \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl
-
-    \b
     # Calculate FID
-    torchrun --standalone --nproc_per_node=1 fid.py calc --images=fid-tmp \\
-        --ref=https://nvlabs-fi-cdn.nvidia.com/edm/fid-refs/cifar10-32x32.npz
+    torchrun --rdzv_endpoint=0.0.0.0:29501 fid.py calc --images=fid-tmp \\
+        --ref=fid-refs/my-dataset.npz
 
     \b
     # Compute dataset reference statistics

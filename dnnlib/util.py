@@ -87,9 +87,9 @@ def _make_sine_data(dset_option, n):
     toy experiments. 
     
     Can construct either 
-    1) sine 1 data (0-1, unscaled), or
-    2) sine2 data (-1 - 1), scaled. We use
-    sine2 in paper results.
+    1) sine 1 data (0 to 1, unscaled), or
+    2) sine2 data (-1 to 1), scaled. We use
+    sine2 in paper experiments.
     
     Args:
     -----
@@ -119,7 +119,7 @@ def _make_sine_data(dset_option, n):
 def get_toy_dset(dset_name, n=20000, augment_to=0):
     """
     
-    Fetches dset and labels for a couple 
+    Fetches toy dset and labels for a couple 
     of 2D and 3D toy cases, namely: 
         1) sine; 
         2) circles; 
@@ -139,7 +139,7 @@ def get_toy_dset(dset_name, n=20000, augment_to=0):
     
     n: int. Number of samples to generate for each dset. 
     
-    augment_to: int. If not None, corresponds to dimension
+    augment_to: int. If not equal to 0, corresponds to dimension
     we will augmented original toy dset to using an 
     orthonormal random projection matrix.
     
@@ -191,7 +191,7 @@ def get_toy_dset(dset_name, n=20000, augment_to=0):
 
 class ToyDset(Dataset):
     """
-    Basic dset structure for toy data.
+    Basic daset class for toy data.
     """
     def __init__(self, data, labels, transform=None):
         self.data = data
@@ -216,8 +216,9 @@ class ToyDset(Dataset):
 def get_disc_times(disc='ifs', end_time=15.01, n_iters=1501, int_mode='melt', eps=1e-2):
     """
     Gets times for 2 different disc options implemented namely original "ifs" disc
-    (linearly spaced pts) vs. VP ODE disc (sees EDM paper table 1). 
-    Main paper uses vp_ode discretization for all experiments.
+    (linearly spaced pts) vs. VP ODE disc (see EDM paper table 1). 
+    Main paper uses vp_ode discretization for all image experiments
+    and 'ifs' discretization for all toy experiments.
     """
     if disc=='ifs':
         times = np.linspace(0, end_time, n_iters)
@@ -265,9 +266,6 @@ def get_eigenvals_basis(X, n_comp=784):
     Uses sklearn PCA method to obtain U_t matrix 
     containing eigenvectors of current covariance mat
     And its correspoding eigenvals.
-    
-    This can also be done using SVD
-    (or even streaming SVD) as well.
     """
     pca = PCA(n_components=n_comp) 
     pca.fit(X)
@@ -278,16 +276,14 @@ def get_eigenvals_basis(X, n_comp=784):
 def get_gamma(g, ts, gamma0=5e-4, rho=1):
     """
     Method to compute gamma(t) during ODE simulation.
-    Note that am treating ts as a scalar here since
-    for melting/PG all samples take same t at each step.
     
     Args:
     -----
     g: torch.Tensor [dim]. Constant g tensor used for IFs 
     schedule.
     ts: float. Time pt we should compute gammas for.
-    gamma0: float. Initial melting kernel width (assuming t0=0)
-    rho: float. Constant for exponential growth of melting kernel.
+    gamma0: float. Initial noise kernel width (assuming t0=0)
+    rho: float. Constant for exponential growth of noise kernel.
     
     Returns: 
     ------
@@ -303,16 +299,13 @@ def get_gamma_dot(g, ts, gamma0=5e-4, rho=1):
     Method to compute derivative of gamma(t) 
     during ODE simulation.
     
-    Note that am treating ts as a scalar here since
-    for melting/PG all samples take same t at each step.
-    
     Args:
     -----
     g: torch.Tensor [dim]. Constant g tensor used for IFs 
     schedule.
     ts: float. Time pt we should compute gammas for.
-    gamma0: float. Initial melting kernel width (assuming t0=0)
-    rho: float. Constant for exponential growth of melting kernel.
+    gamma0: float. Initial noise kernel width (assuming t0=0)
+    rho: float. Constant for exponential growth of noise kernel.
     
     Returns: 
     ------
@@ -329,9 +322,6 @@ def get_s(xi_star, g, t, A0=1, gamma0=5e-4, rho=1):
     Method to compute s(t) (i.e., \alpha(t)) scaling 
     during ODE simulation.
     
-    Note that am treating ts as a scalar here since
-    for melting/PG all samples take same t at each step.
-    
     Args:
     -----
     xi_star: float. Value for highest eigevalue of original 
@@ -341,8 +331,8 @@ def get_s(xi_star, g, t, A0=1, gamma0=5e-4, rho=1):
     t: float. Time pt we should compute s(t) for.
     A0: float. Variance we should achieve (per dimension)
     at end of melt.
-    gamma0: float. Initial melting kernel width (assuming t0=0)
-    rho: float. Constant for exponential growth of melting kernel.
+    gamma0: float. Initial noise kernel width (assuming t0=0)
+    rho: float. Constant for exponential growth of noise kernel.
     
     Returns: 
     ------
@@ -359,9 +349,6 @@ def get_s_dot(xi_star, g, t, A0=1, gamma0=5e-4, rho=1):
     Method to compute s_dot scaling derivative
     during ODE simulation.
     
-    Note that am treating ts as a scalar here since
-    for melting/PG all samples take same t at each step.
-    
     Args:
     -----
     xi_star: float. Value for highest eigevalue of original 
@@ -371,8 +358,8 @@ def get_s_dot(xi_star, g, t, A0=1, gamma0=5e-4, rho=1):
     t: float. Time pt we should compute s(t) for.
     A0: float. Variance we should achieve (per dimension)
     at end of melt.
-    gamma0: float. Initial melting kernel width (assuming t0=0)
-    rho: float. Constant for exponential growth of melting kernel.
+    gamma0: float. Initial noise kernel width (assuming t0=0)
+    rho: float. Constant for exponential growth of noise kernel.
     
     Returns: 
     ------
@@ -385,7 +372,8 @@ def get_s_dot(xi_star, g, t, A0=1, gamma0=5e-4, rho=1):
 
 def get_dx_dt_params(time, **kwargs):
     """
-    Computes args needed to calculate flow dx/dt for a given time pt.
+    Computes ifs schedule noise, scaling components
+    needed to calculate flow dx/dt for a given time pt.
     """
     s = get_s(kwargs.get('xi_star'), kwargs.get('g'), time, A0=kwargs.get('A0'), \
                                gamma0=kwargs.get('gamma0'), rho=kwargs.get('rho'))
@@ -403,7 +391,7 @@ def get_dx_dt_params(time, **kwargs):
 def get_gen_samples(data_dims, dims_to_keep, device, shape, eps=1e-10):
     """
     
-    Samples from appropriate MVN corresponding to end of melt 
+    Samples from appropriate MVN corresponding to end of melt/inflation
     in either PRP or PRR schedules. 
     
     Args: 
@@ -510,8 +498,8 @@ def get_all_boundary_pts(bpts_radii, std_tot_dims, d, n, center=None):
     Returns
     -------
     np.array [len(bpts_radii), n, d]
-    containing all desired boundary pt samples per each 
-    radius/boundary.
+    containing all desired boundary pt samples for all 
+    radiii/bounding sphere.
     """
     if center is None: 
         center = np.zeros(d) #default to zero center 
