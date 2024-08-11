@@ -56,24 +56,26 @@ def main():
 #----------------------------------------------------------------------------
 
 @main.command()
-@click.option('--save_dir',                help='Where to save the output of our simulations to', metavar='DIR',                                                                           type=str, required=True)
-@click.option('--data_name',               help='Which toy dset we will be running simulations for', metavar='STR',                                                                        type=str, required=True)
-@click.option('--total_samples',           help='Total number of samples to run simulations for', metavar='INT',                                                                           type=click.IntRange(min=1000), default=2000, show_default=True)
-@click.option('--augment_to',              help='Number of dimensions to embed our toy data into (linear manifold). Defaults to 0 (no embedding)', metavar='INT',                          type=int, default=0, show_default=True)
+@click.option('--save_dir',                help='Where to save the output of our simulations to', metavar='DIR',                                                                                       type=str, required=True)
+@click.option('--data_name',               help='Which toy dset we will be running simulations for', metavar='STR',                                                                                    type=str, required=True)
+@click.option('--total_samples',           help='Total number of samples to run simulations for', metavar='INT',                                                                                       type=click.IntRange(min=1000), default=2000, show_default=True)
+@click.option('--augment_to',              help='Number of dimensions to embed our toy data into (linear manifold). Defaults to 0 (no embedding)', metavar='INT',                                      type=int, default=0, show_default=True)
 
 
-@click.option('--steps', 'num_steps',      help='Number of ODE integration steps', metavar='INT',                                                                                          type=click.IntRange(min=1), default=1501, show_default=True)
-@click.option('--h',                       help='Step size for ODE integration', metavar='FLOAT',                                                                                          type=click.FloatRange(max=1e-1, max_open=True), default=1e-2, show_default=True)
-@click.option('--end_vars',                help='Ending variance per dim for scaing (A0)', metavar='FLOAT',                                                                                type=float, default=1., show_default=True)
-@click.option('--eps',                     help='Latent space compressed dimension variance (for PRR gen)', metavar='FLOAT',                                                               type=float, default=1, show_default=True)
-@click.option('--rho',                     help='Exponential growth/inflation constant', metavar='FLOAT',                                                                                  type=float, default=1., show_default=True)
-@click.option('--gamma0',                  help='Minimum melting kernel variance', metavar='FLOAT',                                                                                        type=float, default=5e-4, show_default=True)
+@click.option('--steps', 'num_steps',      help='Number of ODE integration steps', metavar='INT',                                                                                                      type=click.IntRange(min=1), default=1501, show_default=True)
+@click.option('--h',                       help='Step size for ODE integration', metavar='FLOAT',                                                                                                      type=click.FloatRange(max=1e-1, max_open=True), default=1e-2, show_default=True)
+@click.option('--end_vars',                help='Ending variance per dim for scaing (A0)', metavar='FLOAT',                                                                                            type=float, default=1., show_default=True)
+@click.option('--eps',                     help='Latent space compressed dimension variance (for PRR gen)', metavar='FLOAT',                                                                           type=float, default=1, show_default=True)
+@click.option('--rho',                     help='Exponential growth/inflation constant', metavar='FLOAT',                                                                                              type=float, default=1., show_default=True)
+@click.option('--gamma0',                  help='Minimum melting kernel variance', metavar='FLOAT',                                                                                                    type=float, default=5e-4, show_default=True)
 
 
-@click.option('--save_freq',               help='How often to save ODE integration steps', metavar='INT',                                                                                  type=click.IntRange(min=1), default=10, show_default=True)
-@click.option('--data_dim',                help='Number of dimensions in original data.', metavar='INT',                                                                                   type=click.IntRange(min=2), default=2, show_default=True)
-@click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                                                    type=click.IntRange(min=1), default=2, show_default=True)
-@click.option('--device_name',             help='String indicating which device to use.', metavar='STR',                                                                                   type=str, default='cuda', show_default=True)
+@click.option('--save_freq',               help='How often to save ODE integration steps', metavar='INT',                                                                                              type=click.IntRange(min=1), default=10, show_default=True)
+@click.option('--data_dim',                help='Number of dimensions in original data.', metavar='INT',                                                                                               type=click.IntRange(min=2), default=2, show_default=True)
+@click.option('--dims_to_keep',            help='Number of original data dims to keep.', metavar='INT',                                                                                                type=click.IntRange(min=1), default=2, show_default=True)
+@click.option('--g_type',                  help='Type of g construction to use.', metavar='orig|constant_inflation_gap',                                                                               type=click.Choice(['orig', 'constant_inflation_gap']), default='orig', show_default=True)
+@click.option('--inflation_gap',           help='Inflation gap to use when constructing PRR schedule g, if using constant inflation gap option. Defaults to 1.0', metavar='FLOAT',                     type=float, default=1., show_default=True) 
+@click.option('--device_name',             help='String indicating which device to use.', metavar='STR',                                                                                               type=str, default='cuda', show_default=True)
 
 #-------------------------------------------------------------------------
 
@@ -107,7 +109,7 @@ def discrete(save_dir, data_name, total_samples, **kwargs):
     data_eigs, _ , W = dnnlib.util.get_eigenvals_basis(toy_samples, n_comp=opts.data_dim)
     W = torch.from_numpy(W).type(torch.float32).to(device)
     #compute g to be used 
-    g  = dnnlib.util.get_g(opts.data_dim, opts.dims_to_keep, device)
+    g  = dnnlib.util.get_g(opts.data_dim, opts.dims_to_keep, opts.g_type, device, inflation_gap=opts.inflation_gap)
     #set up x0 (this is just original samples)
     x0 = torch.from_numpy(toy_samples).type(torch.float32).to(device)
     

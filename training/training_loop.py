@@ -53,6 +53,8 @@ def training_loop(
     device              = torch.device('cuda'),
     data_dim            = None,     # Flat (C, H, W) dimensionality of dataset 
     dims_to_keep        = None,     # Number of original data dims to keep.
+    g_type              = 'orig',   # G construction option to use. 
+    inflation_gap       = None,     # Inflation Gap val to use if using constant_inflation_gap g_type. 
     g_rescaling         = 1.0,      # Global rescaling for g tensor.
 ):
     # Initialize.
@@ -81,7 +83,7 @@ def training_loop(
     #and add these to loss and network kwargs 
     if loss_kwargs.class_name=='training.loss.IFsLoss' and network_kwargs.class_name=='training.networks.IFsPreCond':
         #get g
-        g = dnnlib.util.get_g(data_dim, dims_to_keep, device)
+        g = dnnlib.util.get_g(data_dim, dims_to_keep, g_type, device, inflation_gap=inflation_gap)
         g *= g_rescaling
         #load dataset and get data_eigs, W 
         dist.print0('Loading dataset and computing additional args for IFs PreCond...')

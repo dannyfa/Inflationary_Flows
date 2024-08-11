@@ -231,7 +231,7 @@ def get_disc_times(disc='ifs', end_time=15.01, n_iters=1501, int_mode='melt', ep
     return times
 
 
-def get_g(data_dim, dims_to_keep, device):
+def get_g(data_dim, dims_to_keep, g_type, device, inflation_gap=None):
     """
     
     Computes g tensor to be used 
@@ -242,9 +242,18 @@ def get_g(data_dim, dims_to_keep, device):
     ----
     data_dims: int. Original dimensionality
     of data.
+    
     dims_to_keep:int. Number of dimensions 
     we wish to preserve as flow progresses.
+    
+    g_type: str. Which type of g construction 
+    to use. Should be either 'orig' or 'constant_inflation_gap'.
+    
     device: instance of torch.device class. 
+    
+    inflation_gap=float. Inflation gap to use for constructing 
+    g entries for compressed dimensions under 'constant_inflation_gap'
+    option.
     
     """
     if data_dim == dims_to_keep:
@@ -252,8 +261,15 @@ def get_g(data_dim, dims_to_keep, device):
         g = torch.zeros(data_dim).to(device)
     else: 
         #this is PRR case 
-        g_pos = np.ones(dims_to_keep)
-        g_neg = -(dims_to_keep/(data_dim - dims_to_keep))*np.ones((data_dim-dims_to_keep))
+        g_pos = np.ones(dims_to_keep) 
+        if g_type=='orig': 
+            #orig g, with IG varying with 'd'
+            g_neg = -(dims_to_keep/(data_dim - dims_to_keep))*np.ones((data_dim-dims_to_keep))
+        else: 
+            #constant IG schedule
+            assert inflation_gap is not None, \
+                'For constant inflation gap g, an inflation gap value is needed!'
+            g_neg = -(np.ones(data_dim-dims_to_keep)*inflation_gap)
         g = np.append(g_pos, g_neg)
         g = torch.from_numpy(g).type(torch.float32).to(device)
     return g
