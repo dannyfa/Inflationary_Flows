@@ -74,10 +74,12 @@ def training_loop(
     assert batch_size == batch_gpu * num_accumulation_rounds * dist.get_world_size()
 
     # Set up our TB writer 
-    writer_dir = os.path.join(run_dir, 'TB_logs')
-    if not os.path.exists(writer_dir):
-       os.makedirs(writer_dir)
-    writer = SummaryWriter(log_dir = writer_dir)
+    dist.print0('Creating tensorboard directory...')
+    if dist.get_rank() == 0:
+        writer_dir = os.path.join(run_dir, 'TB_logs')
+        os.makedirs(writer_dir, exist_ok=True)
+        writer = SummaryWriter(log_dir = writer_dir)
+
     
     #if we are using IFs schedule, compute g, W, data_eigs
     #and add these to loss and network kwargs 
@@ -90,22 +92,30 @@ def training_loop(
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # subclass of training.dataset.Dataset 
         dataset_sampler = misc.InfiniteSampler(dataset=dataset_obj, rank=dist.get_rank(), num_replicas=dist.get_world_size(), seed=seed)  
         #take large # of samples here for PCA estimation 
-        dataset_iterator = iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, batch_size=batch_pca, **data_loader_kwargs))
+        dataset_iterator = iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, \
+                                                            batch_size=batch_pca, **data_loader_kwargs))
+        if dist.get_rank() != 0:
+            torch.distributed.barrier() #rank 0 goes first 
         imgs, _ = next(dataset_iterator)
         imgs = (imgs / 127.5 - 1).reshape(imgs.shape[0], -1).cpu().numpy() #scale/center, reshape, pass to numpy 
-        data_eigs, _, W = dnnlib.util.get_eigenvals_basis(imgs, n_comp=data_dim)       
+        data_eigs, _, W = dnnlib.util.get_eigenvals_basis(imgs, n_comp=data_dim)
+        if dist.get_rank() == 0:
+            torch.distributed.barrier() #other ranks follow 
+            
         #add g, W, data_eigs to our loss and network kwargs 
         network_kwargs.update(g=g, data_eigs=data_eigs, W=W)
         loss_kwargs.update(g=g, W=W)
         #reset iterator w/ proper batch size
-        dataset_iterator = iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, batch_size=batch_gpu, **data_loader_kwargs))
+        dataset_iterator = iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, \
+                                                            batch_size=batch_gpu, **data_loader_kwargs))
     
     else:
         #just load data as usual
         dist.print0('Loading dataset...')
         dataset_obj = dnnlib.util.construct_class_by_name(**dataset_kwargs) # subclass of training.dataset.Dataset 
         dataset_sampler = misc.InfiniteSampler(dataset=dataset_obj, rank=dist.get_rank(), num_replicas=dist.get_world_size(), seed=seed)
-        dataset_iterator = iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, batch_size=batch_gpu, **data_loader_kwargs))
+        dataset_iterator = iter(torch.utils.data.DataLoader(dataset=dataset_obj, sampler=dataset_sampler, \
+                                                            batch_size=batch_gpu, **data_loader_kwargs))
            
     # Construct network.
     dist.print0('Constructing network...')
@@ -199,8 +209,9 @@ def training_loop(
             p_ema.copy_(p_net.detach().lerp(p_ema, ema_beta))
 
         #Log loss to TB
-        writer.add_scalar('train_loss', tot_scalar_loss/num_accumulation_rounds, gs)
-        gs+=1
+        if dist.get_rank() == 0: 
+            writer.add_scalar('train_loss', tot_scalar_loss/num_accumulation_rounds, gs) 
+            gs+=1
 
         # Perform maintenance tasks once per tick.
         cur_nimg += batch_size
