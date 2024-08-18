@@ -210,7 +210,7 @@ def training_loop(
 
         #Log loss to TB
         if dist.get_rank() == 0: 
-            writer.add_scalar('train_loss', tot_scalar_loss/num_accumulation_rounds, gs) 
+            writer.add_scalar('train_loss', tot_scalar_loss, gs) 
             gs+=1
 
         # Perform maintenance tasks once per tick.
