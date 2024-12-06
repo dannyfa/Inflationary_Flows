@@ -61,12 +61,12 @@ def main(**kwargs):
 
     #load network 
     if dist.get_rank() != 0: 
-        torch.distributed.barrier()
+        torch.distributed.barrier(device_ids=[int(os.environ["LOCAL_RANK"])])
     dist.print0(f'Loading network from "{opts.network}"...') 
     with dnnlib.util.open_url(opts.network, verbose=(dist.get_rank() == 0)) as f: 
         net = pickle.load(f)['ema'].to(device)
     if dist.get_rank() == 0: 
-        torch.distributed.barrier()     
+        torch.distributed.barrier(device_ids=[int(os.environ["LOCAL_RANK"])])     
         
     
     #generate GT data 
