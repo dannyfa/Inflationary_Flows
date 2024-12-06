@@ -166,12 +166,18 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 toy_MCMC_exps.py --outdir=mcmc-tmp --netw
 The above command will run MCMC sampling experiments with default values for the PR-Preserving schedule. To run same experiment for PR-Reducing case, adjust 
 values passed on to `--tmax` and `--net_eps_cd` flags to match maximum integration time and compressed dimension variance values repectively for 
 specific network being used (see **Tables 4,6 of Appendix B.4.1**). Additionally, for PR-Reducing experiments, 
-we used a step size of 0.001, as highlighted in ** Appendix B.7 **. 
+we used a step size of 0.001, as highlighted in **Appendix B.7**. 
 
 Our MCMC experiments utilize a pre-existing HMC implementation compatible with torch modules (see [hamitorch project repository](https://github.com/AdamCobb/hamiltorch)).
-Additionally, for MCMC experiments, only SINGLE GPU is supported and we are unable to resume experiment from previously running chains. Finally, as explained in ** Appendix B.7 **
+Additionally, for MCMC experiments, <em> only single GPU </em> is supported and we are unable to resume experiment from previously running chains. As explained in **Appendix B.7**,
 our MCMC sampling times are VERY LONG (~2 to 4 weeks to pass burn-in). Therefore, we highly recommend running multiple chains in parallel and using a compute system that can 
 reliably accomodate these very long sampling times. 
+
+Finally, our MCMC script will save both final samples (without burn in phase), as well as complete sampling trajectories (during <em> both </em> burn in and 
+actual sampling phases). Sampling trajectories are saved to a separate subdirectory named `trajs_outdir` and are saved under `curr_params_##.npz` files
+where `##` corresponds to global step number. To re-create trajectories from these files, one should load files in order and group results by trajectory length. 
+Final samples are saved to specified output directory, under files named `sampled_zs.npz` and `sampled_weights.npz`. Samples showcased in manuscript correspond 
+to posterior GMM component weights (`sampled_weights.npz`). Posterior z samples are generated and saved but not utilized (i.e., since z is a nuisance variable here).
 
 ## Running (Additional) Toy 2D alpha-shape or 3D mesh experiments
 
