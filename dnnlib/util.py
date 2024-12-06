@@ -31,6 +31,8 @@ import urllib.request
 import uuid
 import torch 
 from torch.utils.data.dataset import Dataset
+import torch.distributions as D 
+from torchdyn.core import NeuralODE
 from sklearn.decomposition import PCA
 from sklearn import datasets as sklrn_dsets
 from scipy.stats import multivariate_normal
@@ -667,7 +669,132 @@ def compute_coverages_3Dmesh(samples, bpts, bpts_radii, bpts_per_radius, **kwarg
     print_coverage_table(data_coverages)
     return data_coverages
 
+#------------------------------------------------------------------------------#
 
+# Helpers for MCMC Exps 
+
+# wrapper to sim ODE using torch Neural ODE lib ++ hamiltorch 
+# fwd expects sample inputs to be in image/data space! 
+class sim_ode_wrapper(torch.nn.Module):
+    def __init__(self, net, device, A0=1):
+        super().__init__()
+        self.net = net
+        self.device= device 
+
+        #set up additional vals we need for ODE sim
+        self.A0 = A0 
+        self.xi_star = np.amax(net.data_eigs) #float
+        
+        #set up device for net attributes correctly 
+        g = torch.from_numpy(net.g.cpu().numpy()).type(torch.float32).to(device)
+        W = torch.from_numpy(net.W.cpu().numpy()).type(torch.float32).to(device)
+        net.device = device
+        net.g = g
+        net.W = W
+        
+    def get_gamma(self, ts): 
+        exp_term = (torch.ones(self.net.g.shape[0]).to(self.device) + self.net.g) * ts #D 
+        gamma = self.net.gamma0 * torch.exp(self.net.rho*exp_term) #D
+        return gamma 
+        
+    def get_gamma_dot(self, ts): 
+        mult_term = self.net.rho*(torch.ones(self.net.g.shape[0]).to(self.device) + self.net.g) #D 
+        gamma_dot = mult_term * self.get_gamma(ts)#D 
+        return gamma_dot 
+    
+    def get_s(self, ts): 
+        g_star = torch.amax(self.net.g)
+        gamma_gstar = self.net.gamma0 * torch.exp(self.net.rho*(1+g_star)*ts)
+        den = torch.sqrt(self.xi_star + gamma_gstar)
+        s = self.A0 / den 
+        return s 
+        
+    def get_s_dot(self, ts):
+        g_star = torch.amax(self.net.g)
+        gamma_gstar = self.net.gamma0 * torch.exp(self.net.rho*(1+g_star)*ts)
+        s_dot = -0.5*self.A0*self.net.rho*(1+g_star)*gamma_gstar*((self.xi_star + gamma_gstar)**(-1.5))
+        return s_dot
+    
+    def get_dx_dt_params(self, ts):
+        s = self.get_s(ts) 
+        s_dot=self.get_s_dot(ts) 
+        gamma = self.get_gamma(ts) #dim 
+        gamma_inv = torch.reciprocal(gamma) #dim
+        gamma_dot = self.get_gamma_dot(ts)
+        return s, s_dot, gamma_inv, gamma_dot
+
+    def get_netout(self, tilde_xs_es, ts):
+        net_ts = ts.repeat(tilde_xs_es.shape[0])
+        #with torch.no_grad():  #if this line is uncommented, torch dyn complaints of things not being on device?
+        D_tilde_xs, _ = self.net(tilde_xs_es, net_ts)
+        return D_tilde_xs
+
+    def compute_net_flow(self, D_tilde_xs, xs, s, s_dot, gamma_inv, gamma_dot): 
+        if self.net.space == 'ES': 
+            dx_dt = ((s_dot/s) + 0.5*gamma_dot*gamma_inv)[None, :] * xs #bs, dim  
+            dx_dt -= ((0.5*s*gamma_dot*gamma_inv)[None, :]*D_tilde_xs) #bs, dim 
+        else: 
+            dx_dt_first_term = torch.einsum('ij, bjk -> bik', self.net.W.T, xs.unsqueeze(-1)).squeeze(-1) 
+            dx_dt_first_term = ((s_dot/s) + 0.5*gamma_dot*gamma_inv)[None, :] * dx_dt_first_term 
+            dx_dt_first_term = torch.einsum('ij, bjk -> bik', self.net.W, dx_dt_first_term.unsqueeze(-1)).squeeze(-1) 
+            
+            dx_dt_second_term = torch.einsum('ij, bjk -> bik', self.net.W.T, D_tilde_xs.unsqueeze(-1)).squeeze(-1) 
+            dx_dt_second_term = (0.5*s*gamma_dot*gamma_inv)[None, :] * dx_dt_second_term 
+            dx_dt_second_term = torch.einsum('ij, bjk -> bik', self.net.W, dx_dt_second_term.unsqueeze(-1)).squeeze(-1)
+            
+            dx_dt = dx_dt_first_term - dx_dt_second_term
+        return dx_dt
+
+    def forward(self, t, x,  *args, **kwargs):
+        ts = t
+        xs = x 
+        #pass xs to ES 
+        xs_es = torch.einsum('ij, bjk -> bik', self.net.W.T, x.unsqueeze(-1)).squeeze(-1)
+        #get ODE sim args 
+        s, s_dot, gamma_inv, gamma_dot = self.get_dx_dt_params(ts)
+        #get unscaled xs in ES 
+        tilde_xs_es = (1/s)*xs_es
+        #now get netoutputs
+        D_tilde_xs = self.get_netout(tilde_xs_es, ts)
+        #get dx_dt
+        if self.net.space == "ES": 
+            dx_dt_es = self.compute_net_flow(D_tilde_xs, xs_es, s, s_dot, gamma_inv, gamma_dot)
+            dx_dt = torch.einsum('ij, bjk -> bik', self.net.W, dx_dt_es.unsqueeze(-1)).squeeze(-1)
+        else: 
+            dx_dt = self.compute_net_flow(D_tilde_xs, xs, s, s_dot, gamma_inv, gamma_dot)
+        return dx_dt
+
+# Method to construct gt samples for MCMC exps 
+# Uses vals from Table 12. 
+# eps_cd == 1.0; tmax=7.01 for PRP, and eps_cd==1e-2; tmax=15.01 for PRR.
+
+def get_gt_samples(net, n, device, eps_mvn, eps_cd, W, tmax):
+    weights = torch.Tensor([0.5, 0.25, 0.25])
+    means = torch.Tensor([[0,0], [-0.05, 0], [0.05, 0]])
+    stds = torch.sqrt(torch.Tensor([[1, eps_cd], [1, eps_cd], [1, eps_cd]]))
+    stds_weights = torch.Tensor([[0.75, 0.75], [1e-1, 1], [1, 1e-1]])
+    stds *= stds_weights
+    
+    #get z's 
+    mix = D.Categorical(weights)
+    comp = D.Independent(D.Normal(means, stds), 1)
+    gmm = D.MixtureSameFamily(mix, comp)
+    zs_es = gmm.sample(sample_shape=torch.Size([n])) #these are in eigenspace! 
+    zs_is = torch.einsum('ij, bjk -> bik', W, zs_es.unsqueeze(-1)).squeeze(-1)
+    
+    #feed z's through ODE int 
+    wrapper = sim_ode_wrapper(net, device, A0=1.) 
+    model = NeuralODE(wrapper, solver='euler', sensitivity='adjoint').to(device) 
+    t_span = torch.linspace(tmax, 0., int(tmax*100)).to(device) 
+    t_eval, trajectory = model(zs_is.to(device), t_span)
+    
+    #get final x's 
+    xs_noise = (torch.randn(n, zs_is.shape[1])*(np.sqrt(eps_mvn))).to(device) 
+    xs_noised = trajectory[-1, :, :].detach() + xs_noise    
+    
+    return xs_noised, zs_is.to(device)
+
+#------------------------------------------------------------------------------# 
 
 #------------------------------------------------------------------------------#
 

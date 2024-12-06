@@ -9,7 +9,8 @@ Abstract: *Beyond estimating parameters of interest from data, one of the key go
 ## Requirements
 
 * Linux and Windows are supported, but we recommend Linux for performance and compatibility reasons.
-* 1 high-end NVIDIA GPU. All testing and development done using NVIDIA RTX 3090 and 4090 GPUs. Code tested for single-GPU training and generation, though it can easily be adapted for multi-GPU setting.
+* All training on image benchmark datasets was done using NVIDIA GeForce GTX TITANX, and RTX 2080 cards (4-8 GPUs per each experiment). FID and round-trip MSE experiments were 
+done using NVIDIA RTX 3090, 4090, and A5000/A6000 cards (one GPU per experiment).
 * 64-bit Python 3.8 and PyTorch 2.1.2. See https://pytorch.org for PyTorch install instructions.
 * Python libraries: See [environment.yml](./environment.yml) for exact library dependencies. You can use the following commands with Miniconda3 to create and activate your Python environment:
   - `conda env create -f environment.yml -n ifs`
@@ -52,10 +53,16 @@ Code supports following options for toy datasets:
 4) 3D S Curve (`s_curve`)
 5) 3D Swirl (`swirl`)
 
-Note that `--data_dim` and `--dims_to_keep` arguments define schedule to be used - e.g., `data_dim==2` and `dims_to_keep==2` corresponds to PR-Preserving schedule for a 2D dataset. See **Table 2 on Appendix B.4.1** for details on training time (in Mimgs), 
-`--tmax` argument choice, and specific `--data_dim` and `--dims_to_keep` combinations used for each toy experiment. 
+Note that `--data_dim` and `--dims_to_keep` arguments define schedule to be used - e.g., `data_dim==2` and `dims_to_keep==2` corresponds to PR-Preserving schedule for a 2D dataset. Here,
+` s_curve` and `swirl` correspond to datasets scaled to unit variance across all dimensions. To use datasets scaled differently (as mentioned in **Appendix C.2.3**) 
+pass instead `alt_s_curve` and `alt_swirl` in above command.
 
-Here,` s_curve` and `swirl` correspond to datasets scaled to unit variance across all dimensions. To use datasets scaled differently (as mentioned in **Appendix C.2.2**) pass instead `alt_s_curve` and `alt_swirl` in above command.
+We implemented two different approaches to construct the `g` tensor to be used in our PR-Reducing schedules. For most toy and image benchmark experiments showcased in paper we 
+used `--g_type == constant_inflation_gap` which utilizes the constant inflation gap `g` implementation. If using the constant inflation gap `g` construction, 
+the specific inflation gap to be used can be set using the `--inflation_gap` flag. Note that EFFECTIVE inflation gap used will be equal to value specified in this flag plus 1.0. 
+That is, setting `--inflation_gap=0.02` when calling training scripts leads to an EFFECTIVE inflation gap of 1.02. Please, refer to  **Tables 4,5 on Appendix B.4.1** for details on 
+training time (in Mimgs), `--tmax` argument choice, inflation gaps, and specific `--data_dim` and `--dims_to_keep` combinations used for each toy experiment. Inflation gap 
+values showcased in **Table 5 of Appendix B.4.1** represent EFFECTIVE inflation gap values, not specific values passed on to flag when calling scripts.
 
 **Image Datasets** 
 
@@ -66,10 +73,10 @@ First, make sure you have downloaded and prepared the data using the `dataset_to
 torchrun --rdzv_endpoint=0.0.0.0:29501 train.py --outdir=out --data=datasets/cifar10-32x32.zip  \
 --data_dim=3072 --dims_to_keep=3072 --rho=2 --batch=512  --duration=275 
 ```
-Once again, `--data_dim` and `--dims_to_keep` define the specific schedule to be used. For instance, `data_dim==3072` and `dims_to_keep==3072` corresponds to PR-Preserving schedule for a 3x32x32 dataset. 
-
-See **Tables 4, 5 of Appendix B.4.2** for additional details on training hyper-parameters used for the different image benchmark experiments. 
-
+Once again, `--data_dim` and `--dims_to_keep` define the specific schedule to be used. For instance, `data_dim==3072` and `dims_to_keep==3072` 
+corresponds to PR-Preserving schedule for a 3x32x32 dataset. Same comments regarding `g` construction options for training nets on toy data (see session above) apply here.
+For details on specific argument choices used in different experiments, please refer to  **Tables 7-10 of Appendix B.4.2**. Note that inflation gap values
+in **Tables 8-10 of Appendix B.4.2** represent EFFECTIVE values used, not specific values passed on to `--inflation_gap` flag. 
 
 ## Simulating PR-Preserving and PR-Reducing pfODEs
 
@@ -89,7 +96,7 @@ Additionally, we also save a file named `{data_name}_{schedule}_net_sim_params.j
 
 Of note, schedule for network pickle file passed (`--network`) needs to match `--data_dim` and `--dims_to_keep` given. That is, if network was trained on a PRP schedule for a 2D dataset, then we need `data_dim==2` and `dims_to_keep==2`.
 
-To run PR-Reducing (PRR) simulations, pass option `--eps=xx` using values listed in **Table 3 of Appendix B.4.1** for the different datasets. These correspond to latent space compressed dimension variances, used to construct diagonal covariance from which latent samples are obtained prior to running generation.
+To run PR-Reducing (PRR) simulations, pass option `--eps=xx` using values listed in **Table 6 of Appendix B.4.1** for the different datasets. These correspond to latent space compressed dimension variances, used to construct diagonal covariance from which latent samples are obtained prior to running generation.
 
 Finally, same script also allows possibility of simulating our pfODEs using discrete scores (i.e., scores computed from batch of data directly, instead of using trained networks). These are meant as approximations only and can be used for sanity checking. To run such simulations, use instead: 
 
@@ -98,7 +105,7 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 toy_pfODE_int.py discrete --save_dir=out 
 --data_name=circles --data_dim=2 --dims_to_keep=2  
 ```
 
-As with  net case, `--data_dim` and `--dims_to_keep` determnine actual schedules simulated. If running PR-Reducing simulations, pass argument `--eps=xx` using values shown in **Table 3 of Appendix B.4.1**.
+As with  net case, `--data_dim` and `--dims_to_keep` determnine actual schedules simulated. If running PR-Reducing simulations, pass argument `--eps=xx` using values shown in **Table 6 of Appendix B.4.1**.
 
 **Image Datasets** 
 
@@ -113,7 +120,7 @@ By default, this will run inflation, roundtrip (from end of inflation), and gene
 
 As in toy case, simulations are saved to separate .npz files and all parameters used are logged to `{data_name}_{schedule}_HD_pfODE_int_sim_params.json`.
 
-To run PR-Reducing (PRR) simulations pass `--eps==xx`, using values shown in **Table 7 Of Appendix B.5**. These values represent latent space variance for compressed dimensions and are used to construct diagonal covariance from which we obtain initial Gaussian samples for generation.
+To run PR-Reducing (PRR) simulations pass `--eps==xx`, using values shown in **Table 11 Of Appendix B.5**. These values represent latent space variance for compressed dimensions and are used to construct diagonal covariance from which we obtain initial Gaussian samples for generation.
 
 Of note, schedule for network pickle file passed (`--network`) needs to match `--dims_to_keep` given. For instance, if network was trained to run PR-Reducing (PRR) schedule, compressing to 62D dimensions, 
 then we need `dims_to_keep==62`. 
@@ -132,7 +139,7 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 fid.py calc --images=fid-tmp \
 
 The first command will generate several samples (same as number of seeds specified using `--seeds`) and will save these to the specified directory `--save_dir`, with every 1K new images saved under a separate subdirectory.
 Note that schedule network was trained on needs to match `--dims_to_keep` option given (e.g., PRP network needs `dims_to_keep=3072` for 3x32x32 data). 
-If running generation for PR-Reducing schedules, adjust `--dims_to_keep` and `--network` options appropriately, and pass `--eps=xx` using values listed on **Table 7 of Appendix B.5**. 
+If running generation for PR-Reducing schedules, adjust `--dims_to_keep` and `--network` options appropriately, and pass `--eps=xx` using values listed on **Table 11 of Appendix B.5**. 
 
 Second command computes actual fid score for the previously generated images and uses reference file created during dataset preparation (see sections above).
 
@@ -149,7 +156,31 @@ Here, once again, schedule for `--network` and `--dims_to_keep` option need to m
 Finally, `--seed` determines seed to use when sampling from given target dataset at the beginning of melt/inflation.
 Script outputs a .json file containing all simulation parameters along with mse result (averaged across all samples and dimensions).
 
-## Running Toy 2D alpha-shape or 3D mesh experiments
+## Running Toy MCMC experiments 
+
+To run the toy HMC experiments showcased in paper, use: 
+
+```.bash
+torchrun --rdzv_endpoint=0.0.0.0:29501 toy_MCMC_exps.py --outdir=mcmc-tmp --network=networks/network.pkl
+```
+The above command will run MCMC sampling experiments with default values for the PR-Preserving schedule. To run same experiment for PR-Reducing case, adjust 
+values passed on to `--tmax` and `--net_eps_cd` flags to match maximum integration time and compressed dimension variance values repectively for 
+specific network being used (see **Tables 4,6 of Appendix B.4.1**). Additionally, for PR-Reducing experiments, 
+we used a step size of 0.001, as highlighted in **Appendix B.7**. 
+
+Our MCMC experiments utilize a pre-existing HMC implementation compatible with torch modules (see [hamitorch project repository](https://github.com/AdamCobb/hamiltorch)).
+Additionally, for MCMC experiments, <em> only single GPU </em> is supported and we are unable to resume experiment from previously running chains. As explained in **Appendix B.7**,
+our MCMC sampling times are VERY LONG (~2 to 4 weeks to pass burn-in). Therefore, we highly recommend running multiple chains in parallel and using a compute system that can 
+reliably accomodate these very long sampling times. 
+
+Finally, our MCMC script will save both final samples (without burn in phase), as well as complete sampling trajectories (during <em> both </em> burn in and 
+actual sampling phases). Sampling trajectories are saved to a separate subdirectory named `trajs_outdir` and are saved under `curr_params_##.npz` files
+where `##` corresponds to global step number. To re-create trajectories from these files, one should load files in order and group results by trajectory length. 
+Final samples are saved to specified output directory, under files named `sampled_zs.npz` and `sampled_weights.npz`. Samples showcased in manuscript correspond 
+to posterior Gaussian Mixture Model (GMM) component weights (`sampled_weights.npz`). Posterior z samples are generated and saved but 
+not utilized (since z is a nuisance variable in our experiments).
+
+## Running (Additional) Toy 2D alpha-shape or 3D mesh experiments
 
 To run alpha-shape or mesh toy coverage experiments, use: 
 
@@ -162,7 +193,7 @@ torchrun --rdzv_endpoint=0.0.0.0:29501 run_toy_alphashape_mesh_exps.py \
 Here, options for `--network`, `--data_dim`, and `--dims_to_keep` need to match for a given schedule (e.g., PRP trained net for 2D circles, needs `data_dim==2` and `dims_to_keep==2`). 
 Same toy dataset options are supported here (see above) - toy data to use should be specified using `--data_name` option. This needs to match data network was trained on.
 
-Finally, `--steps` determines the number of linearly spaced ODE integration steps taken. This value can be obtained using the `tmax` values highlighted in **Table 2 of Appendix B.4.1** (e.g., for a step size of $1 \times 10^{-2}$ (`--h=1e-2`), 
+Finally, `--steps` determines the number of linearly spaced ODE integration steps taken. This value can be obtained using the `tmax` values highlighted in **Table 4 of Appendix B.4.1** (e.g., for a step size of $1 \times 10^{-2}$ (`--h=1e-2`), 
 and `tmax=7.01`, we should use `--steps=701`). Script uses 20K test points and 200 boundary points per bounding sphere as defaults. 
 
 ## Computing Network Residual Cross-Correlations
