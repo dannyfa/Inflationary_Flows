@@ -177,7 +177,8 @@ Finally, our MCMC script will save both final samples (without burn in phase), a
 actual sampling phases). Sampling trajectories are saved to a separate subdirectory named `trajs_outdir` and are saved under `curr_params_##.npz` files
 where `##` corresponds to global step number. To re-create trajectories from these files, one should load files in order and group results by trajectory length. 
 Final samples are saved to specified output directory, under files named `sampled_zs.npz` and `sampled_weights.npz`. Samples showcased in manuscript correspond 
-to posterior GMM component weights (`sampled_weights.npz`). Posterior z samples are generated and saved but not utilized (i.e., since z is a nuisance variable here).
+to posterior uaussian Mixture Model (GMM) component weights (`sampled_weights.npz`). Posterior z samples are generated and saved but 
+not utilized (since z is a nuisance variable in our experiments).
 
 ## Running (Additional) Toy 2D alpha-shape or 3D mesh experiments
 
